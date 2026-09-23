@@ -2,22 +2,38 @@
 
 import { useState, useTransition } from 'react'
 
-import { createMoment } from '@/app/actions/moments'
+import { createMoment, deleteMoment, updateMoment } from '@/app/actions/moments'
 
-type Step = 'choice' | 'note' | 'source'
+import type { MomentRow } from './MomentTimelineItem'
+
+type Step = 'choice' | 'note' | 'source' | 'confirm-delete'
+
+function toDateInputValue(occurredAt: string) {
+  return occurredAt.slice(0, 10)
+}
 
 export function AddMomentSheet({
   companyId,
+  editingMoment,
   onClose,
 }: {
-  companyId: string
+  companyId?: string
+  editingMoment?: MomentRow | null
   onClose: () => void
 }) {
-  const [step, setStep] = useState<Step>('choice')
-  const [content, setContent] = useState('')
-  const [sourceUrl, setSourceUrl] = useState('')
-  const [sourceTitle, setSourceTitle] = useState('')
-  const [sourceReflection, setSourceReflection] = useState('')
+  const isEditing = !!editingMoment
+  const [step, setStep] = useState<Step>(
+    editingMoment ? (editingMoment.type as 'note' | 'source') : 'choice'
+  )
+  const [content, setContent] = useState(editingMoment?.content ?? '')
+  const [sourceUrl, setSourceUrl] = useState(editingMoment?.source_url ?? '')
+  const [sourceTitle, setSourceTitle] = useState(editingMoment?.source_title ?? '')
+  const [sourceReflection, setSourceReflection] = useState(
+    editingMoment?.type === 'source' ? (editingMoment.content ?? '') : ''
+  )
+  const [occurredAt, setOccurredAt] = useState(
+    editingMoment ? toDateInputValue(editingMoment.occurred_at) : ''
+  )
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -28,7 +44,10 @@ export function AddMomentSheet({
     }
     setError(null)
     startTransition(async () => {
-      const result = await createMoment({ companyId, type: 'note', content })
+      const result =
+        isEditing && editingMoment
+          ? await updateMoment({ momentId: editingMoment.id, type: 'note', content, occurredAt })
+          : await createMoment({ companyId: companyId!, type: 'note', content })
       if (!result.success) {
         setError(result.error)
         return
@@ -44,13 +63,23 @@ export function AddMomentSheet({
     }
     setError(null)
     startTransition(async () => {
-      const result = await createMoment({
-        companyId,
-        type: 'source',
-        sourceUrl,
-        sourceTitle,
-        content: sourceReflection,
-      })
+      const result =
+        isEditing && editingMoment
+          ? await updateMoment({
+              momentId: editingMoment.id,
+              type: 'source',
+              sourceUrl,
+              sourceTitle,
+              content: sourceReflection,
+              occurredAt,
+            })
+          : await createMoment({
+              companyId: companyId!,
+              type: 'source',
+              sourceUrl,
+              sourceTitle,
+              content: sourceReflection,
+            })
       if (!result.success) {
         setError(result.error)
         return
@@ -58,6 +87,25 @@ export function AddMomentSheet({
       onClose()
     })
   }
+
+  function handleDelete() {
+    if (!editingMoment) return
+    setError(null)
+    startTransition(async () => {
+      const result = await deleteMoment(editingMoment.id)
+      if (!result.success) {
+        setError(result.error)
+        return
+      }
+      onClose()
+    })
+  }
+
+  const title = isEditing
+    ? editingMoment?.type === 'source'
+      ? 'Bron bewerken'
+      : 'Notitie bewerken'
+    : 'Nieuwe toevoeging'
 
   return (
     <>
@@ -70,7 +118,7 @@ export function AddMomentSheet({
 
       <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85vh] flex-col rounded-t-2xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-          {step !== 'choice' ? (
+          {step !== 'choice' && !isEditing ? (
             <button
               type="button"
               onClick={() => {
@@ -82,7 +130,7 @@ export function AddMomentSheet({
               ‹ Terug
             </button>
           ) : (
-            <span className="text-sm font-semibold text-slate-900">Nieuwe toevoeging</span>
+            <span className="text-sm font-semibold text-slate-900">{title}</span>
           )}
           <button
             type="button"
@@ -95,7 +143,35 @@ export function AddMomentSheet({
         </div>
 
         <div className="overflow-y-auto px-4 py-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
-          {step === 'choice' ? (
+          {step === 'confirm-delete' ? (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-slate-700">
+                Weet je zeker dat je dit moment wilt verwijderen? Dit kan niet ongedaan worden
+                gemaakt.
+              </p>
+              {error ? <p className="text-sm text-red-600">{error}</p> : null}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep((editingMoment?.type as 'note' | 'source') ?? 'note')
+                    setError(null)
+                  }}
+                  className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                >
+                  Annuleren
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={isPending}
+                  className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-60"
+                >
+                  {isPending ? 'Bezig…' : 'Verwijderen'}
+                </button>
+              </div>
+            </div>
+          ) : step === 'choice' ? (
             <div className="flex flex-col gap-1">
               <button
                 type="button"
@@ -126,9 +202,28 @@ export function AddMomentSheet({
                 placeholder="Schrijf op wat er door je hoofd gaat..."
                 className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none"
               />
-              <p className="text-xs text-slate-400">
-                Je koers wordt automatisch opgeslagen als marktcontext.
-              </p>
+
+              {isEditing ? (
+                <div>
+                  <label htmlFor="note-date" className="mb-1.5 block text-sm font-medium text-slate-900">
+                    Datum
+                  </label>
+                  <input
+                    id="note-date"
+                    type="date"
+                    value={occurredAt}
+                    onChange={(e) => setOccurredAt(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none"
+                  />
+                  <p className="mt-1.5 text-xs text-slate-400">
+                    Wijzig je de datum, dan halen we de koers van die dag opnieuw op.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">
+                  Je koers wordt automatisch opgeslagen als marktcontext.
+                </p>
+              )}
 
               {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
@@ -140,6 +235,19 @@ export function AddMomentSheet({
               >
                 {isPending ? 'Opslaan…' : 'Opslaan'}
               </button>
+
+              {isEditing ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null)
+                    setStep('confirm-delete')
+                  }}
+                  className="text-sm font-medium text-red-600 hover:text-red-700"
+                >
+                  Moment verwijderen
+                </button>
+              ) : null}
             </div>
           ) : (
             <div className="flex flex-col gap-3">
@@ -194,6 +302,24 @@ export function AddMomentSheet({
                 />
               </div>
 
+              {isEditing ? (
+                <div>
+                  <label
+                    htmlFor="source-date"
+                    className="mb-1.5 block text-sm font-medium text-slate-900"
+                  >
+                    Datum
+                  </label>
+                  <input
+                    id="source-date"
+                    type="date"
+                    value={occurredAt}
+                    onChange={(e) => setOccurredAt(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              ) : null}
+
               {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
               <button
@@ -204,6 +330,19 @@ export function AddMomentSheet({
               >
                 {isPending ? 'Opslaan…' : 'Opslaan'}
               </button>
+
+              {isEditing ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null)
+                    setStep('confirm-delete')
+                  }}
+                  className="text-sm font-medium text-red-600 hover:text-red-700"
+                >
+                  Moment verwijderen
+                </button>
+              ) : null}
             </div>
           )}
         </div>

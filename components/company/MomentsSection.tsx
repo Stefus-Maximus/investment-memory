@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { ChartDataPoint, ChartRange } from '@/lib/chart-data'
 
+import { AddMomentSheet } from './AddMomentSheet'
 import { MomentTimelineItem, type MomentRow } from './MomentTimelineItem'
 import { PriceChart } from './PriceChart'
 
@@ -30,15 +31,32 @@ export function MomentsSection({
   chartData,
   currency,
   defaultRange,
+  initialSelectedMomentId = null,
 }: {
   moments: MomentRow[]
   chartData: ChartDataPoint[] | null
   currency: string
   defaultRange: ChartRange
+  initialSelectedMomentId?: string | null
 }) {
-  const [selectedMomentId, setSelectedMomentId] = useState<string | null>(null)
+  const [selectedMomentId, setSelectedMomentId] = useState<string | null>(initialSelectedMomentId)
+  const [editingMoment, setEditingMoment] = useState<MomentRow | null>(null)
   const itemRefs = useRef(new Map<string, HTMLElement | null>())
   const syncPausedUntil = useRef(0)
+  const chartWrapperRef = useRef<HTMLDivElement | null>(null)
+
+  // The sticky chart permanently covers the top slice of the viewport once
+  // it's pinned (§ sticky chart request below) — read its live height rather
+  // than a hardcoded number so the anchor/visibility math below still tracks
+  // reality if the chart's own size ever changes.
+  const getOcclusion = useCallback(() => chartWrapperRef.current?.getBoundingClientRect().height ?? 0, [])
+
+  // Same anchor concept as before (§40's comment), just rebased onto the
+  // viewport slice that's actually free of the sticky chart.
+  const getAnchorY = useCallback(() => {
+    const occlusion = getOcclusion()
+    return occlusion + (window.innerHeight - occlusion) * ANCHOR_RATIO
+  }, [getOcclusion])
 
   // Only moments that actually ended up on the line can take part in the
   // coupling: sources are never plotted (§38), and a moment can lose its dot
@@ -59,25 +77,49 @@ export function MomentsSection({
   // Chart → timeline (§39). Bring the entry into view only when it isn't
   // already fully readable, and land it exactly on the anchor line so that
   // the reverse sync agrees with us once the page settles.
-  const selectFromChart = useCallback((id: string) => {
-    setSelectedMomentId(id)
+  const selectFromChart = useCallback(
+    (id: string) => {
+      setSelectedMomentId(id)
 
-    const element = itemRefs.current.get(id)
-    if (!element) return
+      const element = itemRefs.current.get(id)
+      if (!element) return
 
-    const rect = element.getBoundingClientRect()
-    if (rect.top >= 0 && rect.bottom <= window.innerHeight) return
+      const occlusion = getOcclusion()
+      const rect = element.getBoundingClientRect()
+      if (rect.top >= occlusion && rect.bottom <= window.innerHeight) return
 
-    syncPausedUntil.current = Date.now() + SCROLL_SYNC_PAUSE_MS
-    window.scrollBy({
-      top: rect.top - window.innerHeight * ANCHOR_RATIO,
-      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-    })
-  }, [])
+      syncPausedUntil.current = Date.now() + SCROLL_SYNC_PAUSE_MS
+      window.scrollBy({
+        top: rect.top - getAnchorY(),
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+      })
+    },
+    [getAnchorY, getOcclusion]
+  )
 
   const selectFromTimeline = useCallback((id: string) => {
     syncPausedUntil.current = Date.now() + 200
     setSelectedMomentId(id)
+  }, [])
+
+  // Deep link from a Memory card (§ homepage throwback → exact moment):
+  // selection state is already set from `initialSelectedMomentId`, so this
+  // only needs to bring that entry into view once, on arrival.
+  useEffect(() => {
+    if (!initialSelectedMomentId) return
+
+    const element = itemRefs.current.get(initialSelectedMomentId)
+    if (!element) return
+
+    syncPausedUntil.current = Date.now() + SCROLL_SYNC_PAUSE_MS
+    const rect = element.getBoundingClientRect()
+    window.scrollBy({
+      top: rect.top - getAnchorY(),
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+    })
+    // Runs once, right after the initial refs are registered — not on every
+    // change of the callbacks below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Timeline → chart (§40). Deliberately only on real scrolling, never on
@@ -93,14 +135,19 @@ export function MomentsSection({
         frame = 0
         if (Date.now() < syncPausedUntil.current) return
 
-        const anchor = window.innerHeight * ANCHOR_RATIO
+        const occlusion = getOcclusion()
+        const anchor = getAnchorY()
         let closestId: string | null = null
         let closestDistance = Infinity
 
         for (const [id, element] of itemRefs.current) {
           if (!element || !plottedIds.has(id)) continue
           const rect = element.getBoundingClientRect()
-          if (rect.bottom < 0 || rect.top > window.innerHeight) continue
+          // Skip entries still hidden under the sticky chart, not just
+          // entries below the viewport — otherwise a card sitting right
+          // behind the chart could "win" the anchor even though the user
+          // can't actually see it.
+          if (rect.bottom < occlusion || rect.top > window.innerHeight) continue
           const distance = Math.abs(rect.top - anchor)
           if (distance < closestDistance) {
             closestDistance = distance
@@ -117,29 +164,36 @@ export function MomentsSection({
       window.removeEventListener('scroll', handleScroll)
       if (frame) cancelAnimationFrame(frame)
     }
-  }, [plottedIds])
+  }, [plottedIds, getAnchorY, getOcclusion])
 
   return (
     <section className="flex flex-col gap-6">
       <div>
         <h2 className="text-base font-semibold text-slate-900">Koersverloop</h2>
-        <p className="mt-0.5 text-sm text-slate-500">Jouw momenten staan op de koerslijn.</p>
-        {chartData && chartData.length >= 2 ? (
-          <div className="mt-3">
-            <PriceChart
-              data={chartData}
-              currency={currency}
-              defaultRange={defaultRange}
-              selectedMomentId={selectedMomentId}
-              onSelectMoment={selectFromChart}
-            />
-          </div>
-        ) : (
-          <div className="mt-3 flex h-52 items-center justify-center rounded-xl border border-dashed border-slate-200 text-sm text-slate-400">
-            Koersdata nog niet beschikbaar voor dit bedrijf.
-          </div>
-        )}
+        <p className="mb-3 mt-0.5 text-sm text-slate-500">Jouw momenten staan op de koerslijn.</p>
       </div>
+
+      {/* Sticky within `section`'s bounds, not just this block, so it stays
+          pinned while "Mijn momenten" scrolls underneath it (§18: the two are
+          one continuous section) and only scrolls away once the whole thing,
+          timeline included, has passed. The title/subtitle above stay in
+          normal flow on purpose — only the chart (+ its own range selector)
+          pins. */}
+      {chartData && chartData.length >= 2 ? (
+        <div ref={chartWrapperRef} className="sticky top-0 z-20 border-b border-slate-100 bg-white pb-3">
+          <PriceChart
+            data={chartData}
+            currency={currency}
+            defaultRange={defaultRange}
+            selectedMomentId={selectedMomentId}
+            onSelectMoment={selectFromChart}
+          />
+        </div>
+      ) : (
+        <div className="flex h-52 items-center justify-center rounded-xl border border-dashed border-slate-200 text-sm text-slate-400">
+          Koersdata nog niet beschikbaar voor dit bedrijf.
+        </div>
+      )}
 
       <div>
         <h2 className="text-base font-semibold text-slate-900">Mijn momenten</h2>
@@ -154,6 +208,7 @@ export function MomentsSection({
                 onSelect={
                   plottedIds.has(moment.id) ? () => selectFromTimeline(moment.id) : undefined
                 }
+                onEdit={moment.type !== 'conviction_change' ? () => setEditingMoment(moment) : undefined}
                 isLast={index === moments.length - 1}
               />
             ))}
@@ -164,6 +219,10 @@ export function MomentsSection({
           </div>
         )}
       </div>
+
+      {editingMoment ? (
+        <AddMomentSheet editingMoment={editingMoment} onClose={() => setEditingMoment(null)} />
+      ) : null}
     </section>
   )
 }

@@ -1,5 +1,6 @@
-// A small hand-picked list to search against for §15 ("Bedrijf toevoegen").
-// No external API/keys yet — swap this for a real symbol-search provider later.
+// Formerly the search source for §15 ("Bedrijf toevoegen"), replaced by the
+// live searchCompanies() in lib/market-data/yahoo-finance.ts. Kept as
+// fallback/example data — not called from the search screen anymore.
 export interface KnownCompany {
   name: string
   ticker: string
@@ -48,13 +49,3 @@ export const KNOWN_COMPANIES: KnownCompany[] = [
   { name: 'BMW', ticker: 'BMW', exchange: 'XETRA' },
   { name: 'Adidas', ticker: 'ADS', exchange: 'XETRA' },
 ]
-
-export function searchKnownCompanies(query: string): KnownCompany[] {
-  const q = query.trim().toLowerCase()
-  if (!q) return KNOWN_COMPANIES
-
-  return KNOWN_COMPANIES.filter(
-    (company) =>
-      company.name.toLowerCase().includes(q) || company.ticker.toLowerCase().includes(q)
-  )
-}

@@ -8,7 +8,7 @@ import { formatLongDate, formatPrice } from '@/lib/format'
 import type { ChartDataPoint, ChartRange } from '@/lib/chart-data'
 import { filterByRange } from '@/lib/chart-data'
 
-const RANGE_OPTIONS: ChartRange[] = ['1J', '3J', '5J', 'Alle']
+const RANGE_OPTIONS: ChartRange[] = ['1M', '3M', '1J', 'Alle']
 
 // §27: the price line is light, calm, thin — never the thing that draws the
 // eye. §4.2: blue is the app's one accent, reserved for the user's own

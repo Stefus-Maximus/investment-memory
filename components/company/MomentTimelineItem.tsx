@@ -60,14 +60,29 @@ function RailDot({ selected }: { selected: boolean }) {
 // §33: the historical price always reads as context, never as "now" — the
 // same line for a note and a conviction change, since both freeze a real
 // quote at the moment they were written (§34).
-function PriceContext({ moment }: { moment: MomentRow }) {
+function PriceContext({ moment, selected }: { moment: MomentRow; selected: boolean }) {
   return (
-    <p className="mt-1.5 text-xs text-slate-400">
+    <p className={`mt-1.5 text-xs ${selected ? 'text-white/50' : 'text-slate-400'}`}>
       Koers op dat moment ·{' '}
       {moment.price_at_time != null
         ? formatPrice(moment.price_at_time, moment.price_currency)
         : '€ —'}
     </p>
+  )
+}
+
+// Same pencil glyph as ConvictionLevel's edit affordance — one visual
+// language for "this is editable" across the page.
+function EditIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path
+        d="M14.5 3.5a1.5 1.5 0 0 1 2 2L7 15l-3.5 1L4.5 12.5 14.5 3.5Z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }
 
@@ -78,25 +93,29 @@ export function MomentTimelineItem({
   ref,
   selected = false,
   onSelect,
+  onEdit,
   isLast = false,
 }: {
   moment: MomentRow
   ref?: Ref<HTMLElement>
   selected?: boolean
   onSelect?: () => void
+  onEdit?: () => void
   isLast?: boolean
 }) {
-  // Badge label and primary content turn dark blue when selected; the
-  // card's light-blue background (set below) is untouched by this.
-  const primaryTextClass = selected ? 'text-blue-900' : 'text-slate-900'
-  const noteTextClass = selected ? 'text-blue-900' : 'text-slate-700'
+  // §"geselecteerd"-patroon: one blue card treatment everywhere — solid
+  // blue background, white primary text, white-at-50%-opacity supporting
+  // text. No other color stands for "active".
+  const primaryTextClass = selected ? 'text-white' : 'text-slate-900'
+  const noteTextClass = selected ? 'text-white/70' : 'text-slate-700'
+  const secondaryTextClass = selected ? 'text-white/50' : 'text-slate-400'
   const { heading: noteHeading, body: noteBody } = splitNoteContent(moment.content)
 
   const body = (
     <>
       <div className="flex items-center gap-2">
         <MomentTypeBadge type={moment.type} selected={selected} />
-        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+        <span className={`text-[11px] font-medium uppercase tracking-wide ${secondaryTextClass}`}>
           {formatTimelineDate(moment.occurred_at)}
         </span>
       </div>
@@ -111,15 +130,15 @@ export function MomentTimelineItem({
           >
             {moment.source_title}
           </a>
-          {moment.content ? <p className="mt-1 text-sm text-slate-600">{moment.content}</p> : null}
+          {moment.content ? <p className={`mt-1 text-sm ${noteTextClass}`}>{moment.content}</p> : null}
         </div>
       ) : moment.type === 'conviction_change' ? (
         <div className="mt-2">
           <p className={`text-sm font-semibold transition-colors duration-200 ${primaryTextClass}`}>
             {convictionChangeTitle(moment.conviction_from, moment.conviction_to)}
           </p>
-          {moment.content ? <p className="mt-1 text-sm text-slate-600">{moment.content}</p> : null}
-          <PriceContext moment={moment} />
+          {moment.content ? <p className={`mt-1 text-sm ${noteTextClass}`}>{moment.content}</p> : null}
+          <PriceContext moment={moment} selected={selected} />
         </div>
       ) : (
         <div className="mt-2">
@@ -131,7 +150,7 @@ export function MomentTimelineItem({
               {noteBody}
             </p>
           ) : null}
-          <PriceContext moment={moment} />
+          <PriceContext moment={moment} selected={selected} />
         </div>
       )}
     </>
@@ -151,23 +170,36 @@ export function MomentTimelineItem({
 
       <article
         ref={ref}
-        className={`min-w-0 flex-1 rounded-xl border p-3 shadow-sm transition-[background-color,border-color,transform] duration-150 ease-out ${
+        className={`relative min-w-0 flex-1 rounded-xl border p-3 shadow-sm transition-[background-color,border-color,transform] duration-150 ease-out ${
           selected
-            ? 'translate-x-1 border-blue-200 bg-blue-50/60'
+            ? 'translate-x-1 border-blue-600 bg-blue-600'
             : 'translate-x-0 border-slate-100 bg-white'
         }`}
       >
+        {onEdit ? (
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label="Moment bewerken"
+            className={`absolute right-2.5 top-2.5 z-10 ${
+              selected ? 'text-white/50 hover:text-white' : 'text-slate-300 hover:text-slate-500'
+            }`}
+          >
+            <EditIcon />
+          </button>
+        ) : null}
+
         {onSelect ? (
           <button
             type="button"
             onClick={onSelect}
             aria-pressed={selected}
-            className="w-full cursor-pointer text-left"
+            className={`w-full cursor-pointer text-left ${onEdit ? 'pr-5' : ''}`}
           >
             {body}
           </button>
         ) : (
-          body
+          <div className={onEdit ? 'pr-5' : undefined}>{body}</div>
         )}
       </article>
     </div>

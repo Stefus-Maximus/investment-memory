@@ -1,10 +1,12 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 
-import { createCompany } from '@/app/actions/companies'
-import { searchKnownCompanies, type KnownCompany } from '@/lib/data/known-companies'
+import { createCompany, searchCompaniesAction } from '@/app/actions/companies'
+import type { CompanySearchResult } from '@/lib/market-data/yahoo-finance'
 import type { CompanyStatus } from '@/lib/supabase/database.types'
+
+const SEARCH_DEBOUNCE_MS = 300
 
 const STATUS_OPTIONS: { value: CompanyStatus; label: string }[] = [
   { value: 'portfolio', label: 'Portfolio' },
@@ -23,15 +25,51 @@ export function AddCompanySheet({
 }) {
   const [step, setStep] = useState<'search' | 'details'>('search')
   const [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<KnownCompany | null>(null)
+  const [results, setResults] = useState<CompanySearchResult[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [selected, setSelected] = useState<CompanySearchResult | null>(null)
   const [status, setStatus] = useState<CompanyStatus>(defaultStatus)
   const [thesisText, setThesisText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
-  const results = searchKnownCompanies(query)
+  // Live search against Yahoo (§15), debounced so typing doesn't fire a
+  // request per keystroke. `cancelled` also guards against an older,
+  // slower request resolving after a newer one and overwriting its results.
+  useEffect(() => {
+    const trimmed = query.trim()
+    // Nothing to reset here: the render below checks an empty query before
+    // it ever looks at results/searchError/isSearching, so stale state from
+    // a previous query never gets a chance to show.
+    if (!trimmed) return
 
-  function handleSelect(company: KnownCompany) {
+    let cancelled = false
+
+    const timeout = setTimeout(() => {
+      if (cancelled) return
+      setIsSearching(true)
+      setSearchError(null)
+
+      searchCompaniesAction(trimmed).then((result) => {
+        if (cancelled) return
+        setIsSearching(false)
+        if (!result.success) {
+          setSearchError(result.error)
+          setResults([])
+          return
+        }
+        setResults(result.results)
+      })
+    }, SEARCH_DEBOUNCE_MS)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timeout)
+    }
+  }, [query])
+
+  function handleSelect(company: CompanySearchResult) {
     setSelected(company)
     setStep('details')
     setError(null)
@@ -101,9 +139,17 @@ export function AddCompanySheet({
               />
 
               <div className="mt-3 divide-y divide-slate-100">
-                {results.length === 0 ? (
+                {query.trim() === '' ? (
                   <p className="py-6 text-center text-sm text-slate-400">
-                    Geen resultaten. Deze lijst is nog beperkt — meer bedrijven volgen later.
+                    Typ een bedrijfsnaam of ticker om te zoeken.
+                  </p>
+                ) : isSearching ? (
+                  <p className="py-6 text-center text-sm text-slate-400">Zoeken…</p>
+                ) : searchError ? (
+                  <p className="py-6 text-center text-sm text-red-500">{searchError}</p>
+                ) : results.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-slate-400">
+                    Geen resultaten gevonden.
                   </p>
                 ) : (
                   results.map((company) => (
@@ -116,6 +162,7 @@ export function AddCompanySheet({
                       <span className="text-sm font-medium text-slate-900">{company.name}</span>
                       <span className="shrink-0 text-sm text-slate-400">
                         {company.ticker} · {company.exchange}
+                        {company.quoteType === 'ETF' ? ' · ETF' : ''}
                       </span>
                     </button>
                   ))

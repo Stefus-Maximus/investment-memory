@@ -72,8 +72,8 @@ export function MomentTypeBadge({ type, selected = false }: { type: MomentType; 
   const { label, icon: Icon } = BADGE_CONFIG[type]
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium transition-colors duration-200 ${
-        selected ? 'text-blue-900' : 'text-blue-700'
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors duration-200 ${
+        selected ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-700'
       }`}
     >
       <Icon />

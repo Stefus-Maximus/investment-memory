@@ -1,6 +1,6 @@
 import type { DailyPricePoint } from './market-data/yahoo-finance'
 
-export type ChartRange = '1J' | '3J' | '5J' | 'Alle'
+export type ChartRange = '1M' | '3M' | '1J' | 'Alle'
 
 export interface ChartMomentInput {
   id: string
@@ -80,24 +80,33 @@ export function buildPriceChartData(
   return points
 }
 
-const RANGE_YEARS: Record<Exclude<ChartRange, 'Alle'>, number> = { '1J': 1, '3J': 3, '5J': 5 }
-const MS_PER_YEAR = 365 * 24 * 60 * 60 * 1000
+const RANGE_DAYS: Record<Exclude<ChartRange, 'Alle'>, number> = { '1M': 30, '3M': 90, '1J': 365 }
+const MS_PER_DAY = 24 * 60 * 60 * 1000
 
 export function filterByRange(data: ChartDataPoint[], range: ChartRange): ChartDataPoint[] {
   if (range === 'Alle' || data.length === 0) return data
   const latest = new Date(data[data.length - 1].date).getTime()
-  const cutoff = latest - RANGE_YEARS[range] * MS_PER_YEAR
+  const cutoff = latest - RANGE_DAYS[range] * MS_PER_DAY
   return data.filter((point) => new Date(point.date).getTime() >= cutoff)
 }
 
 // §29: don't open on a wide range when the company has barely been
 // followed — e.g. a handful of weeks since it was added shouldn't default
-// to "5J" of near-empty chart.
+// to "1J" of near-empty chart. This app is a journal, not a market
+// terminal — most companies will be followed for weeks or months, not
+// years, so the shortest range is the common case, not the edge case.
+//
+// This only picks which range button is pre-selected — it must NOT be used
+// to decide how much data getDailyPrices fetches. That was tried and
+// reverted: scoping the fetch to the follow window meant "1J"/"Alle" had no
+// more data in memory than "3M" already showed, so those buttons appeared
+// to do nothing. The fetch always pulls the full capped history regardless
+// of follow duration; only the default *selection* depends on it.
 export function defaultRangeForFollowDuration(followingSince: string | null): ChartRange {
-  if (!followingSince) return '1J'
-  const ageYears = (Date.now() - new Date(followingSince).getTime()) / MS_PER_YEAR
-  if (ageYears <= 1) return '1J'
-  if (ageYears <= 3) return '3J'
-  if (ageYears <= 5) return '5J'
+  if (!followingSince) return '1M'
+  const ageDays = (Date.now() - new Date(followingSince).getTime()) / MS_PER_DAY
+  if (ageDays <= 30) return '1M'
+  if (ageDays <= 90) return '3M'
+  if (ageDays <= 365) return '1J'
   return 'Alle'
 }

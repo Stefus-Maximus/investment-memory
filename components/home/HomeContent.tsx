@@ -6,6 +6,7 @@ import type { CompanyWithActivity } from '@/lib/data/companies'
 import type { CompanyStatus } from '@/lib/supabase/database.types'
 
 import { AddCompanySheet } from './AddCompanySheet'
+import { AddMomentFab } from './AddMomentFab'
 import { PortfolioSection } from './PortfolioSection'
 import { WatchlistSection } from './WatchlistSection'
 
@@ -22,6 +23,12 @@ export function HomeContent({
     <>
       <PortfolioSection companies={portfolio} onAdd={() => setAddStatus('portfolio')} />
       <WatchlistSection companies={watchlist} onAdd={() => setAddStatus('watchlist')} />
+
+      <AddMomentFab
+        portfolio={portfolio}
+        watchlist={watchlist}
+        onAddCompany={() => setAddStatus('portfolio')}
+      />
 
       {addStatus ? (
         <AddCompanySheet

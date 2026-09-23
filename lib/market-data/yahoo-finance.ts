@@ -8,6 +8,7 @@
 // repointing the one import in the company page; nothing else in the app
 // should talk to a market-data provider directly.
 const YAHOO_CHART_BASE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart'
+const YAHOO_SEARCH_BASE_URL = 'https://query1.finance.yahoo.com/v1/finance/search'
 
 // A request with no User-Agent gets rate-limited (verified: 429 without one,
 // 200 with one) — Yahoo's endpoint is undocumented, so this is the simplest
@@ -18,16 +19,33 @@ const USER_AGENT =
 // Same ticker-ambiguity problem §15 solves for search, and the same
 // exchanges twelve-data.ts disambiguates via mic_code — here as the Yahoo
 // symbol suffix instead. US listings take no suffix. Verified against
-// Yahoo's chart endpoint for each exchange known-companies.ts currently
-// uses.
-const EXCHANGE_YAHOO_SUFFIXES: Record<string, string> = {
-  'Euronext Amsterdam': '.AS',
-  'Euronext Paris': '.PA',
-  XETRA: '.DE',
-  'London Stock Exchange': '.L',
-  NASDAQ: '',
-  NYSE: '',
-}
+// Yahoo's chart endpoint for each exchange known-companies.ts used to list.
+//
+// Single source of truth for both directions: resolveSymbol() below turns a
+// stored (ticker, exchange) back into a Yahoo chart symbol via `suffix`;
+// searchCompanies() turns a live search result's Yahoo exchange code back
+// into the same (ticker, exchange) shape via `searchCodes`. A search result
+// on an exchange not listed here is dropped rather than guessed — storing a
+// ticker/exchange pair that resolveSymbol() can't turn back into a working
+// Yahoo symbol would silently break that company's price lookups forever.
+const SUPPORTED_EXCHANGES: { name: string; suffix: string; searchCodes: string[] }[] = [
+  { name: 'Euronext Amsterdam', suffix: '.AS', searchCodes: ['AMS'] },
+  { name: 'Euronext Paris', suffix: '.PA', searchCodes: ['PAR'] },
+  { name: 'XETRA', suffix: '.DE', searchCodes: ['GER'] },
+  { name: 'London Stock Exchange', suffix: '.L', searchCodes: ['LSE'] },
+  { name: 'NASDAQ', suffix: '', searchCodes: ['NMS', 'NGM', 'NCM'] },
+  { name: 'NYSE', suffix: '', searchCodes: ['NYQ'] },
+]
+
+const EXCHANGE_YAHOO_SUFFIXES: Record<string, string> = Object.fromEntries(
+  SUPPORTED_EXCHANGES.map((exchange) => [exchange.name, exchange.suffix])
+)
+
+const SEARCH_CODE_TO_EXCHANGE = new Map(
+  SUPPORTED_EXCHANGES.flatMap((exchange) =>
+    exchange.searchCodes.map((code) => [code, exchange] as const)
+  )
+)
 
 export interface DailyPricePoint {
   date: string
@@ -37,6 +55,16 @@ export interface DailyPricePoint {
 export interface CurrentPrice {
   price: number
   currency: string
+}
+
+// §15's search result shape. quoteType is kept on the result rather than
+// collapsed away — callers may want to label ETFs, even though the MVP
+// search screen currently shows both kinds side by side, undistinguished.
+export interface CompanySearchResult {
+  name: string
+  ticker: string
+  exchange: string
+  quoteType: 'EQUITY' | 'ETF'
 }
 
 interface YahooChartResult {
@@ -49,6 +77,18 @@ interface YahooChartResponse {
   chart: {
     result: YahooChartResult[] | null
   }
+}
+
+interface YahooSearchQuote {
+  symbol?: string
+  shortname?: string
+  longname?: string
+  exchange?: string
+  quoteType?: string
+}
+
+interface YahooSearchResponse {
+  quotes?: YahooSearchQuote[]
 }
 
 function resolveSymbol(ticker: string, exchange: string): string {
@@ -70,14 +110,13 @@ function isPenceQuoted(currency: string | undefined): boolean {
   return currency === GBP_PENCE_CODE
 }
 
-async function fetchChart(
+async function fetchChartWithParams(
   symbol: string,
-  range: string,
+  params: Record<string, string>,
   revalidateSeconds: number
 ): Promise<YahooChartResult | null> {
   const url = new URL(`${YAHOO_CHART_BASE_URL}/${symbol}`)
-  url.searchParams.set('range', range)
-  url.searchParams.set('interval', '1d')
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
 
   try {
     const response = await fetch(url, {
@@ -95,6 +134,66 @@ async function fetchChart(
 
     const data = (await response.json()) as YahooChartResponse
     return data.chart.result?.[0] ?? null
+  } catch {
+    return null
+  }
+}
+
+function fetchChart(
+  symbol: string,
+  range: string,
+  revalidateSeconds: number
+): Promise<YahooChartResult | null> {
+  return fetchChartWithParams(symbol, { range, interval: '1d' }, revalidateSeconds)
+}
+
+// §15's live replacement for known-companies.ts's static list. Returns null
+// only when the request itself failed (network error, non-2xx, unparseable
+// body) — never for a query that legitimately matched nothing — so callers
+// can tell "search is broken" apart from "no results" and word the empty
+// state accordingly.
+export async function searchCompanies(query: string): Promise<CompanySearchResult[] | null> {
+  const q = query.trim()
+  if (!q) return []
+
+  const url = new URL(YAHOO_SEARCH_BASE_URL)
+  url.searchParams.set('q', q)
+  url.searchParams.set('quotesCount', '10')
+  url.searchParams.set('newsCount', '0')
+
+  try {
+    const response = await fetch(url, {
+      headers: { 'User-Agent': USER_AGENT },
+      next: { revalidate: 300 }, // 5 min — this is typed-search traffic, not
+      // a price; a short cache just softens repeat/duplicate queries during
+      // one typing session.
+    })
+    if (!response.ok) return null
+
+    const data = (await response.json()) as YahooSearchResponse
+    const results: CompanySearchResult[] = []
+
+    for (const quote of data.quotes ?? []) {
+      if (quote.quoteType !== 'EQUITY' && quote.quoteType !== 'ETF') continue
+      if (!quote.symbol || !quote.exchange) continue
+
+      const exchange = SEARCH_CODE_TO_EXCHANGE.get(quote.exchange)
+      if (!exchange) continue // unsupported exchange — see SUPPORTED_EXCHANGES above
+
+      const ticker =
+        exchange.suffix && quote.symbol.endsWith(exchange.suffix)
+          ? quote.symbol.slice(0, -exchange.suffix.length)
+          : quote.symbol
+
+      results.push({
+        name: quote.longname ?? quote.shortname ?? ticker,
+        ticker,
+        exchange: exchange.name,
+        quoteType: quote.quoteType,
+      })
+    }
+
+    return results
   } catch {
     return null
   }
@@ -123,7 +222,12 @@ export async function getCurrentPrice(
 // Yahoo's range parameter is a coarse bucket (1y, 2y, 5y, ...) rather than
 // an exact bar count like Twelve Data's outputsize, so this rounds up to
 // the smallest bucket that should comfortably cover `outputsize` trading
-// days (~252/year); the caller then trims to the exact count.
+// days (~252/year); the caller then trims to the exact count. Always called
+// with the same (large, capped) outputsize regardless of a company's follow
+// duration — the "1M"/"3M"/"1J"/"Alle" chart ranges are a client-side
+// filter over one full fetch, not separate fetches, so this always requests
+// enough history to cover all of them (§29's range-button bug: scoping the
+// fetch itself to the default view starved the wider range buttons).
 function rangeCoveringOutputsize(outputsize: number): string {
   const years = Math.ceil(outputsize / 252)
   if (years <= 1) return '1y'
@@ -163,4 +267,49 @@ export async function getDailyPrices(
     .map((point) => (pence ? { ...point, close: point.close / 100 } : point))
     .slice(-outputsize) // Yahoo already returns oldest → newest, unlike
   // Twelve Data, which needed a reverse() here
+}
+
+// Used when a moment's date is edited by hand (§34's "frozen forever" is
+// about never *recomputing* a snapshot on its original date — this is the
+// one deliberate exception: the user is choosing a different date, so the
+// snapshot must move with it). period1/period2 bound a window ending the day
+// after the target date, wide enough to jump back over a long weekend or a
+// multi-day holiday to the last real trading day.
+export async function getPriceForDate(
+  ticker: string,
+  exchange: string,
+  dateIso: string
+): Promise<CurrentPrice | null> {
+  const target = new Date(`${dateIso}T00:00:00Z`)
+  if (Number.isNaN(target.getTime())) return null
+
+  const period1 = Math.floor(target.getTime() / 1000) - 12 * 24 * 60 * 60
+  const period2 = Math.floor(target.getTime() / 1000) + 24 * 60 * 60
+
+  const result = await fetchChartWithParams(
+    resolveSymbol(ticker, exchange),
+    { period1: String(period1), period2: String(period2), interval: '1d' },
+    3600 // a historical lookup doesn't need to be as fresh as "today"
+  )
+
+  const timestamps = result?.timestamp
+  const closes = result?.indicators.quote[0]?.close
+  const currency = result?.meta.currency
+  if (!timestamps || !closes || !currency) return null
+
+  const points = timestamps
+    .map((timestamp, index) => ({
+      date: new Date(timestamp * 1000).toISOString().slice(0, 10),
+      close: closes[index],
+    }))
+    .filter((point): point is DailyPricePoint => Number.isFinite(point.close))
+
+  // The last close on or before the target date (price "as of" that day);
+  // if the target predates the series entirely (e.g. before listing), fall
+  // back to the first close after it rather than returning nothing.
+  const point =
+    [...points].reverse().find((p) => p.date <= dateIso) ?? points.find((p) => p.date > dateIso)
+  if (!point) return null
+
+  return isPenceQuoted(currency) ? { price: point.close / 100, currency: 'GBP' } : { price: point.close, currency }
 }

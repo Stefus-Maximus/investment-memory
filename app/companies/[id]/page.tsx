@@ -2,7 +2,9 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { CompanyLogo } from '@/components/CompanyLogo'
+import { AuthGate } from '@/components/auth/AuthGate'
 import { AddMomentFab } from '@/components/company/AddMomentFab'
+import { CompanyOptionsMenu } from '@/components/company/CompanyOptionsMenu'
 import { ConvictionLevel } from '@/components/company/ConvictionLevel'
 import { MomentsSection } from '@/components/company/MomentsSection'
 import { ThesisSection } from '@/components/company/ThesisSection'
@@ -11,14 +13,19 @@ import { formatPrice } from '@/lib/format'
 import { getCurrentPrice, getDailyPrices } from '@/lib/market-data/yahoo-finance'
 import { createClient } from '@/lib/supabase/server'
 
-export default async function CompanyPage({ params }: PageProps<'/companies/[id]'>) {
+export default async function CompanyPage({ params, searchParams }: PageProps<'/companies/[id]'>) {
   const { id } = await params
+  const { moment: momentParam } = await searchParams
+  const initialSelectedMomentId = typeof momentParam === 'string' ? momentParam : null
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
   if (!user) notFound()
+
+  // No real account linked yet: block the rest of the app until one is.
+  if (user.is_anonymous) return <AuthGate />
 
   const { data: company } = await supabase
     .from('companies')
@@ -95,7 +102,10 @@ export default async function CompanyPage({ params }: PageProps<'/companies/[id]
           </div>
         </div>
 
-        <ConvictionLevel companyId={company.id} conviction={company.conviction} />
+        <div className="flex shrink-0 items-start gap-1">
+          <ConvictionLevel companyId={company.id} conviction={company.conviction} />
+          <CompanyOptionsMenu companyId={company.id} companyName={company.name} />
+        </div>
       </header>
 
       <ThesisSection
@@ -109,6 +119,7 @@ export default async function CompanyPage({ params }: PageProps<'/companies/[id]
         chartData={chartData && chartData.length >= 2 ? chartData : null}
         currency={currentPrice?.currency ?? 'EUR'}
         defaultRange={defaultRange}
+        initialSelectedMomentId={initialSelectedMomentId}
       />
 
       <AddMomentFab companyId={company.id} />
