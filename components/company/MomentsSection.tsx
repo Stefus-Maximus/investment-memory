@@ -280,7 +280,11 @@ export function MomentsSection({
         <h2 className="text-base font-semibold text-slate-900">Koersverloop</h2>
         <p className="mt-0.5 text-sm text-slate-500">Jouw momenten staan op de koerslijn.</p>
 
-        <div className="mt-9">
+        {/* Tight to the subtitle it belongs to: the line explains the chart,
+            so it should read as its caption rather than float above it. This
+            also keeps the pinned stack shorter, which matters most on the
+            smallest phones where the zone otherwise eats the screen. */}
+        <div className="mt-4">
           {chartData && chartData.length >= 2 ? (
             <PriceChart
               data={chartData}
