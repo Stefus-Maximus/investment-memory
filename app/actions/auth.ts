@@ -54,10 +54,20 @@ export async function requestMagicLink(email: string): Promise<AuthActionResult>
 // One-time welcome screen (app/page.tsx / WelcomeIntro), gated on this flag
 // so it survives across devices and never reappears after the first visit —
 // user_metadata rather than a new table, since there's nothing else that
-// needs a profiles row yet.
-export async function completeOnboarding(): Promise<AuthActionResult> {
+// needs a profiles row yet. Also captures the display name and avatar chosen
+// on that same screen, stored alongside the flag.
+export async function completeOnboarding(
+  displayName: string,
+  avatarId: string
+): Promise<AuthActionResult> {
   const supabase = await createClient()
-  const { error } = await supabase.auth.updateUser({ data: { onboarding_seen: true } })
+  const { error } = await supabase.auth.updateUser({
+    data: {
+      onboarding_seen: true,
+      display_name: displayName.trim(),
+      avatar_id: avatarId,
+    },
+  })
   if (error) return { success: false, error: 'Dat ging niet goed. Probeer het opnieuw.' }
 
   revalidatePath('/')

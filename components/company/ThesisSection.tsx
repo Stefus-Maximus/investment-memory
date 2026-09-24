@@ -3,6 +3,8 @@
 import { useState, useTransition } from 'react'
 
 import { upsertThesis } from '@/app/actions/thesis'
+import { CollapsibleText } from '@/components/CollapsibleText'
+import { showToast } from '@/components/Toast'
 
 // Same neutral "this navigates/opens" glyph as the Memory cards — a visual
 // hint that the whole card is interactive, not a standalone control with
@@ -47,6 +49,7 @@ export function ThesisSection({
         setError(result.error)
         return
       }
+      showToast('Vastgelegd.')
       setEditing(false)
     })
   }
@@ -78,7 +81,11 @@ export function ThesisSection({
           <div>
             <p className="text-sm font-bold text-white/50">Waarom dit, waarom nu?</p>
             {hasThesis ? (
-              <p className="mt-1 text-sm text-white">{initialThesisText}</p>
+              <CollapsibleText
+                text={initialThesisText}
+                className="text-sm text-white"
+                toggleClassName="text-white/70 hover:text-white"
+              />
             ) : (
               <p className="mt-1 text-sm text-white/40">
                 Nog geen these toegevoegd. Wat maakt dit bedrijf interessant voor jou?
@@ -89,7 +96,11 @@ export function ThesisSection({
           <div>
             <p className="text-sm font-bold text-white/50">Wat zou bewijzen dat je ongelijk hebt?</p>
             {hasInvalidation ? (
-              <p className="mt-1 text-sm text-white">{initialInvalidationText}</p>
+              <CollapsibleText
+                text={initialInvalidationText}
+                className="text-sm text-white"
+                toggleClassName="text-white/70 hover:text-white"
+              />
             ) : (
               <p className="mt-1 text-sm text-white/40">Nog niet ingevuld.</p>
             )}
@@ -120,7 +131,7 @@ export function ThesisSection({
             rows={3}
             value={thesisText}
             onChange={(e) => setThesisText(e.target.value)}
-            placeholder="Wat maakt dit bedrijf interessant voor jou?"
+            placeholder="Leg het uit alsof je het over een jaar aan jezelf terugleest."
             className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none"
           />
         </div>

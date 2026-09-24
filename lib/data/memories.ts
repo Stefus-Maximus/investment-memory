@@ -25,8 +25,13 @@ interface MemoryWindow {
 // §9.3: purely a time-window match on occurred_at — no smart/AI selection.
 // One window per throwback ("3 maanden geleden" etc.), each with enough
 // tolerance around its target age that a real journal (which isn't written
-// on exact anniversaries) still finds a match.
+// on exact anniversaries) still finds a match. Ordered from smallest to
+// largest tolerance: this order also decides which window "wins" a moment
+// that happens to fall inside more than one window's range (see the
+// dedup logic in getMemories below).
 const MEMORY_WINDOWS: MemoryWindow[] = [
+  { label: '1 week geleden', targetDays: 7, toleranceDays: 3 },
+  { label: '1 maand geleden', targetDays: 30, toleranceDays: 5 },
   { label: '3 maanden geleden', targetDays: 90, toleranceDays: 15 },
   { label: '6 maanden geleden', targetDays: 182, toleranceDays: 20 },
   { label: '1 jaar geleden', targetDays: 365, toleranceDays: 30 },
@@ -111,10 +116,17 @@ export async function getMemories(
   }))
 
   const cards: MemoryCard[] = []
+  // A moment that falls inside more than one window's range (e.g. right on
+  // the 1 week/1 maand boundary) may only appear once. MEMORY_WINDOWS is
+  // ordered by ascending tolerance, so processing it in order and claiming
+  // each matched moment here means the tightest/best-fitting window always
+  // wins it, and later, looser windows just skip it.
+  const usedMomentIds = new Set<string>()
 
   for (const window of MEMORY_WINDOWS) {
     const candidates = withAge.filter(
-      ({ ageDays }) => Math.abs(ageDays - window.targetDays) <= window.toleranceDays
+      ({ moment, ageDays }) =>
+        !usedMomentIds.has(moment.id) && Math.abs(ageDays - window.targetDays) <= window.toleranceDays
     )
     if (candidates.length === 0) continue
 
@@ -127,13 +139,14 @@ export async function getMemories(
     const company = companyById.get(closest.moment.company_id)
     if (!company) continue
 
+    usedMomentIds.add(closest.moment.id)
     cards.push(toMemoryCard(closest.moment, company, window.label))
   }
 
   if (cards.length > 0) return cards
 
-  // No moment falls near a 3/6/12-month mark — fall back to whatever was
-  // added most recently, of any type, rather than hiding the section (§9).
+  // No moment falls near any of the windows above — fall back to whatever
+  // was added most recently, of any type, rather than hiding the section (§9).
   const mostRecent = moments[0]
   const company = companyById.get(mostRecent.company_id)
   if (!company) return []

@@ -19,15 +19,17 @@ export default async function HomePage() {
     return <AuthGate />
   }
 
-  const firstName = (user?.user_metadata?.full_name as string | undefined)
-    ?.trim()
-    .split(' ')[0]
-
   // First real login ever: show the one-time welcome screen instead of the
-  // homepage. completeOnboarding() flips this flag and revalidates "/".
+  // homepage. completeOnboarding() flips this flag (and saves the chosen
+  // display_name/avatar_id) and revalidates "/".
   if (!user?.user_metadata?.onboarding_seen) {
     return <WelcomeIntro />
   }
+
+  const firstName = (user?.user_metadata?.display_name as string | undefined)
+    ?.trim()
+    .split(' ')[0]
+  const avatarId = (user?.user_metadata?.avatar_id as string | undefined) ?? null
 
   const [portfolio, watchlist, memories, lessonsCount] = user
     ? await Promise.all([
@@ -40,7 +42,7 @@ export default async function HomePage() {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-8 bg-white px-4 pb-28 pt-6 text-slate-900">
-      <Header name={firstName ?? null} hasLessons={lessonsCount > 0} />
+      <Header name={firstName ?? null} hasLessons={lessonsCount > 0} avatarId={avatarId} />
       <MemoriesSection memories={memories} />
       <HomeContent portfolio={portfolio} watchlist={watchlist} />
     </main>

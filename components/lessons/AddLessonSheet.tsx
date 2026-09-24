@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 
 import { createLesson } from '@/app/actions/lessons'
+import { showToast } from '@/components/Toast'
 
 // One text field, one type of entry — no choice step, unlike AddMomentSheet.
 export function AddLessonSheet({ onClose }: { onClose: () => void }) {
@@ -22,6 +23,7 @@ export function AddLessonSheet({ onClose }: { onClose: () => void }) {
         setError(result.error)
         return
       }
+      showToast('Toegevoegd aan je tijdlijn.')
       onClose()
     })
   }
@@ -58,7 +60,7 @@ export function AddLessonSheet({ onClose }: { onClose: () => void }) {
             rows={5}
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder="Schrijf op wat je geleerd hebt..."
+            placeholder="Welke les wil je je toekomstige zelf meegeven?"
             className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-amber-600 focus:outline-none"
           />
 

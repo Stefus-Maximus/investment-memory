@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 
 import { createInvestmentRule } from '@/app/actions/investment-rules'
+import { showToast } from '@/components/Toast'
 import type { InvestmentRule } from '@/lib/data/investment-rules'
 
 const COLLAPSED_COUNT = 3
@@ -41,6 +42,7 @@ function AddRuleForm({ onDone }: { onDone: () => void }) {
         setError(result.error)
         return
       }
+      showToast('Vastgelegd.')
       onDone()
     })
   }

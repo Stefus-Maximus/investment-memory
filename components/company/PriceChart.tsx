@@ -1,10 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { DotProps } from 'recharts'
 
-import { formatLongDate, formatPrice } from '@/lib/format'
+import { formatLongDate, formatPrice, formatPriceCompact } from '@/lib/format'
 import type { ChartDataPoint, ChartRange } from '@/lib/chart-data'
 import { filterByRange } from '@/lib/chart-data'
 
@@ -190,11 +190,19 @@ export function PriceChart({
     return [min - padding, max + padding]
   }, [filtered])
 
+  // Three subtle horizontal guides — low/mid/high — same restraint as the
+  // x-axis's own tick count, never a dense trading-chart grid.
+  const yTicks = useMemo(() => {
+    const [min, max] = yDomain
+    return [min, (min + max) / 2, max]
+  }, [yDomain])
+
   return (
     <div>
       <div className="h-52 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={filtered} margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>
+          <LineChart data={filtered} margin={{ top: 8, right: 14, bottom: 0, left: 4 }}>
+            <CartesianGrid horizontal vertical={false} stroke="#f1f5f9" />
             <XAxis
               dataKey="date"
               ticks={ticks}
@@ -204,7 +212,15 @@ export function PriceChart({
               axisLine={false}
               tickLine={false}
             />
-            <YAxis hide domain={yDomain} />
+            <YAxis
+              domain={yDomain}
+              ticks={yTicks}
+              tickFormatter={(value: number) => formatPriceCompact(value, currency)}
+              tick={{ fontSize: 10, fill: '#94a3b8' }}
+              axisLine={false}
+              tickLine={false}
+              width={48}
+            />
             <Tooltip
               content={<ChartTooltip currency={currency} />}
               cursor={{ stroke: '#e2e8f0', strokeWidth: 1 }}

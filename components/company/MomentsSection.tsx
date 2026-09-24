@@ -74,12 +74,43 @@ export function MomentsSection({
     else itemRefs.current.delete(id)
   }, [])
 
+  const hasChart = Boolean(chartData && chartData.length >= 2)
+
+  // Feeds `scroll-pt-[var(--moment-scroll-anchor)]` on <html> (layout.tsx),
+  // which pairs CSS scroll-snap with the exact same anchor line the JS sync
+  // above/below uses — so a native snap (from a swipe) and a JS-driven
+  // scrollBy (from a chart tap) always agree on where a card should rest,
+  // instead of the browser correcting to a different spot after ours lands.
+  useEffect(() => {
+    const updateAnchorVar = () => {
+      document.documentElement.style.setProperty('--moment-scroll-anchor', `${getAnchorY()}px`)
+    }
+    updateAnchorVar()
+
+    window.addEventListener('resize', updateAnchorVar)
+    const observer = new ResizeObserver(updateAnchorVar)
+    if (chartWrapperRef.current) observer.observe(chartWrapperRef.current)
+
+    return () => {
+      window.removeEventListener('resize', updateAnchorVar)
+      observer.disconnect()
+      document.documentElement.style.removeProperty('--moment-scroll-anchor')
+    }
+  }, [getAnchorY, hasChart])
+
   // Chart → timeline (§39). Bring the entry into view only when it isn't
   // already fully readable, and land it exactly on the anchor line so that
   // the reverse sync agrees with us once the page settles.
   const selectFromChart = useCallback(
     (id: string) => {
       setSelectedMomentId(id)
+      // Pause the reverse (timeline→chart) sync for every tap, not just the
+      // ones that trigger a scroll — otherwise a tap on an already-visible
+      // item leaves the listener armed, and the smallest incidental scroll
+      // right after the tap (mobile momentum, focus-scroll from the dot's
+      // tabIndex) can immediately overwrite the selection with whatever
+      // happens to sit closest to the anchor line instead.
+      syncPausedUntil.current = Date.now() + SCROLL_SYNC_PAUSE_MS
 
       const element = itemRefs.current.get(id)
       if (!element) return
@@ -88,7 +119,6 @@ export function MomentsSection({
       const rect = element.getBoundingClientRect()
       if (rect.top >= occlusion && rect.bottom <= window.innerHeight) return
 
-      syncPausedUntil.current = Date.now() + SCROLL_SYNC_PAUSE_MS
       window.scrollBy({
         top: rect.top - getAnchorY(),
         behavior: prefersReducedMotion() ? 'auto' : 'smooth',

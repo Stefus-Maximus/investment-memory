@@ -20,8 +20,8 @@ export function CompanyListItem({ company }: { company: CompanyWithActivity }) {
         </p>
         <p className="mt-0.5 text-xs text-slate-400">{company.ticker}</p>
         {company.latestMoment ? (
-          <p className="mt-1 truncate text-sm text-slate-500">
-            Laatste toevoeging · {formatShortDate(company.latestMoment.occurredAt)}
+          <p className="mt-1 line-clamp-2 text-sm text-slate-500">
+            {formatShortDate(company.latestMoment.occurredAt)}
             {company.latestMoment.label ? (
               <span className="italic"> — &ldquo;{company.latestMoment.label}&rdquo;</span>
             ) : null}

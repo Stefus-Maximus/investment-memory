@@ -27,3 +27,13 @@ export function formatPrice(value: number, currency: string | null) {
     currency: currency ?? 'EUR',
   }).format(value)
 }
+
+// Rounded, no decimals — used for the chart's y-axis ticks, where the full
+// formatPrice() precision would crowd a ~180-240px-tall chart.
+export function formatPriceCompact(value: number, currency: string | null) {
+  return new Intl.NumberFormat('nl-NL', {
+    style: 'currency',
+    currency: currency ?? 'EUR',
+    maximumFractionDigits: 0,
+  }).format(value)
+}

@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 
 import { createMoment, deleteMoment, updateMoment } from '@/app/actions/moments'
+import { showToast } from '@/components/Toast'
 
 import type { MomentRow } from './MomentTimelineItem'
 
@@ -52,6 +53,7 @@ export function AddMomentSheet({
         setError(result.error)
         return
       }
+      showToast('Toegevoegd aan je tijdlijn.')
       onClose()
     })
   }
@@ -84,6 +86,7 @@ export function AddMomentSheet({
         setError(result.error)
         return
       }
+      showToast('Toegevoegd aan je tijdlijn.')
       onClose()
     })
   }
@@ -199,7 +202,7 @@ export function AddMomentSheet({
                 rows={5}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder="Schrijf op wat er door je hoofd gaat..."
+                placeholder="Wat wil je hier over een paar maanden nog van weten?"
                 className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none"
               />
 

@@ -2,6 +2,7 @@
 
 import type { Ref } from 'react'
 
+import { CollapsibleText } from '@/components/CollapsibleText'
 import { MomentTypeBadge } from '@/components/MomentTypeBadge'
 import { convictionChangeTitle } from '@/lib/conviction'
 import { formatPrice, formatTimelineDate } from '@/lib/format'
@@ -20,14 +21,6 @@ export type MomentRow = Pick<
   | 'conviction_to'
   | 'occurred_at'
 >
-
-// A note has no separate title field — the first line doubles as the
-// heading (bold), any following lines read as the lighter-weight body.
-function splitNoteContent(content: string | null) {
-  const lines = (content ?? '').split('\n')
-  const [heading, ...rest] = lines
-  return { heading, body: rest.join('\n').trim() }
-}
 
 // Same visual language as the chart dot (PriceChart's MomentDot/halo): grey
 // when idle, blue with a soft translucent halo when selected, ~180ms fade.
@@ -109,7 +102,6 @@ export function MomentTimelineItem({
   const primaryTextClass = selected ? 'text-white' : 'text-slate-900'
   const noteTextClass = selected ? 'text-white/70' : 'text-slate-700'
   const secondaryTextClass = selected ? 'text-white/50' : 'text-slate-400'
-  const { heading: noteHeading, body: noteBody } = splitNoteContent(moment.content)
 
   const body = (
     <>
@@ -130,7 +122,13 @@ export function MomentTimelineItem({
           >
             {moment.source_title}
           </a>
-          {moment.content ? <p className={`mt-1 text-sm ${noteTextClass}`}>{moment.content}</p> : null}
+          {moment.content ? (
+            <CollapsibleText
+              text={moment.content}
+              className={`text-sm ${noteTextClass}`}
+              toggleClassName={selected ? 'text-white/60 hover:text-white' : 'text-slate-400 hover:text-slate-600'}
+            />
+          ) : null}
         </div>
       ) : moment.type === 'conviction_change' ? (
         <div className="mt-2">
@@ -142,14 +140,11 @@ export function MomentTimelineItem({
         </div>
       ) : (
         <div className="mt-2">
-          <p className={`text-sm font-semibold transition-colors duration-200 ${primaryTextClass}`}>
-            {noteHeading}
-          </p>
-          {noteBody ? (
-            <p className={`mt-1 text-sm transition-colors duration-200 ${noteTextClass}`}>
-              {noteBody}
-            </p>
-          ) : null}
+          <CollapsibleText
+            text={moment.content ?? ''}
+            className={`text-sm transition-colors duration-200 ${primaryTextClass}`}
+            toggleClassName={selected ? 'text-white/60 hover:text-white' : 'text-slate-400 hover:text-slate-600'}
+          />
           <PriceContext moment={moment} selected={selected} />
         </div>
       )}
@@ -170,7 +165,11 @@ export function MomentTimelineItem({
 
       <article
         ref={ref}
-        className={`relative min-w-0 flex-1 rounded-xl border p-3 shadow-sm transition-[background-color,border-color,transform] duration-150 ease-out ${
+        // snap-start on the exact element MomentsSection measures with
+        // getBoundingClientRect() (§40) — so the browser's own snap point and
+        // the JS anchor line describe the same position, not two competing
+        // ones.
+        className={`relative min-w-0 flex-1 snap-start rounded-xl border p-3 shadow-sm transition-[background-color,border-color,transform] duration-150 ease-out ${
           selected
             ? 'translate-x-1 border-blue-600 bg-blue-600'
             : 'translate-x-0 border-slate-100 bg-white'
@@ -190,14 +189,21 @@ export function MomentTimelineItem({
         ) : null}
 
         {onSelect ? (
-          <button
-            type="button"
+          <div
+            role="button"
+            tabIndex={0}
             onClick={onSelect}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onSelect()
+              }
+            }}
             aria-pressed={selected}
             className={`w-full cursor-pointer text-left ${onEdit ? 'pr-5' : ''}`}
           >
             {body}
-          </button>
+          </div>
         ) : (
           <div className={onEdit ? 'pr-5' : undefined}>{body}</div>
         )}

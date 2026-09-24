@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 
 import { updateConviction } from '@/app/actions/conviction'
+import { showToast } from '@/components/Toast'
 import { CONVICTION_UI_LEVELS, type ConvictionUILevel } from '@/lib/conviction'
 
 const DOT_COUNT = 5
@@ -29,6 +30,7 @@ export function ConvictionEditSheet({
         setError(result.error)
         return
       }
+      showToast('Toegevoegd aan je tijdlijn.')
       onClose()
     })
   }
