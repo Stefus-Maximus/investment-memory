@@ -63,7 +63,7 @@ function AddRuleForm({ onDone }: { onDone: () => void }) {
           type="button"
           onClick={handleSave}
           disabled={isPending}
-          className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-blue-700 transition-colors hover:bg-white/90 disabled:opacity-60"
+          className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-green-700 transition-colors hover:bg-white/90 disabled:opacity-60"
         >
           {isPending ? 'Opslaan…' : 'Opslaan'}
         </button>
@@ -80,11 +80,11 @@ function AddRuleForm({ onDone }: { onDone: () => void }) {
   )
 }
 
-// §1: Blue card, same treatment as ThesisSection/ConvictionLevel — the app's
-// one visual language for "this is a standing, personal commitment" rather
-// than a logged moment. Rules never appear on a timeline: they're not
-// something that happened, they're a fixed constraint the user set for
-// themselves.
+// §1: Dark green card, same treatment as ThesisSection/ConvictionLevel (blue)
+// but in the lessons journal's own accent — the app's one visual language for
+// "this is a standing, personal commitment" rather than a logged moment.
+// Rules never appear on a timeline: they're not something that happened,
+// they're a fixed constraint the user set for themselves.
 export function RulesCard({ rules }: { rules: InvestmentRule[] }) {
   const [expanded, setExpanded] = useState(false)
   const [adding, setAdding] = useState(false)
@@ -98,7 +98,7 @@ export function RulesCard({ rules }: { rules: InvestmentRule[] }) {
   const visibleRules = allVisible ? rules : rules.slice(0, COLLAPSED_COUNT)
 
   return (
-    <section className="relative rounded-2xl bg-blue-600 p-4">
+    <section className="relative rounded-2xl bg-green-700 p-4">
       <p className="text-xs font-bold uppercase tracking-wide text-white/60">
         Mijn vaste beleggingsregels
       </p>
@@ -114,7 +114,7 @@ export function RulesCard({ rules }: { rules: InvestmentRule[] }) {
           {!allVisible ? (
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-blue-600 to-transparent"
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-green-700 to-transparent"
             />
           ) : null}
         </div>

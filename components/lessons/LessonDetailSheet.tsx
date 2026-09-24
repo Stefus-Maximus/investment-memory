@@ -18,7 +18,7 @@ export function LessonDetailSheet({ lesson, onClose }: { lesson: Lesson; onClose
 
       <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85vh] flex-col rounded-t-2xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-amber-700/80">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-green-700/80">
             {formatTimelineDate(lesson.createdAt)}
           </span>
           <button

@@ -61,7 +61,7 @@ export function AddLessonSheet({ onClose }: { onClose: () => void }) {
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Welke les wil je je toekomstige zelf meegeven?"
-            className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-amber-600 focus:outline-none"
+            className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-green-600 focus:outline-none"
           />
 
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
@@ -70,7 +70,7 @@ export function AddLessonSheet({ onClose }: { onClose: () => void }) {
             type="button"
             onClick={handleSave}
             disabled={isPending}
-            className="rounded-lg bg-amber-700 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-amber-800 disabled:opacity-60"
+            className="rounded-lg bg-green-700 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-green-800 disabled:opacity-60"
           >
             {isPending ? 'Opslaan…' : 'Opslaan'}
           </button>
