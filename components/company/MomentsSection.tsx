@@ -8,24 +8,29 @@ import { AddMomentSheet } from './AddMomentSheet'
 import { MomentTimelineItem, type MomentRow } from './MomentTimelineItem'
 import { PriceChart } from './PriceChart'
 
-// The timeline entry that counts as "active" while scrolling is the one
-// nearest this line — a bit above the middle of the viewport, where the eye
-// naturally rests while reading downward (§40).
-const ANCHOR_RATIO = 0.35
+// A smooth scroll travels across every card between here and its target, so
+// the observer would strobe the selection along the way. Ignore it until the
+// scroll has settled; the tap already told us which moment wins.
+const PROGRAMMATIC_SCROLL_SETTLE_MS = 800
 
-// After a chart tap we scroll the timeline ourselves. That scrolling fires
-// scroll events, so the timeline→chart sync is paused briefly; without this
-// the selection would flicker across every entry we pass on the way.
-const SCROLL_SYNC_PAUSE_MS = 900
+// `pb-28` on the company page's <main>. The tail spacer below only has to
+// make up whatever the page doesn't already leave under the last card.
+const PAGE_BOTTOM_PADDING = 112
 
 function prefersReducedMotion() {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
 // §18/§41: Koersverloop and Mijn momenten are one continuous section, not two
-// screens — and §39/§40 make them one interaction too. Both halves read the
-// same selected-moment id from here, so a tap on the chart and a scroll
-// through the timeline can never disagree about which moment is in focus.
+// screens — and §39/§40 make them one interaction too.
+//
+// The whole coupling rests on a single number: the height of the sticky
+// chart. It is the page's scroll-padding (so native scroll-snap parks a card
+// exactly under the chart), each card's scroll-margin (so scrollIntoView
+// lands in that same place), and the top inset of the IntersectionObserver
+// root (so "intersecting" literally means "still visible below the chart").
+// Because all three derive from one measurement, the browser's snapping and
+// our own selection can't disagree about where a card belongs.
 export function MomentsSection({
   moments,
   chartData,
@@ -41,160 +46,204 @@ export function MomentsSection({
 }) {
   const [selectedMomentId, setSelectedMomentId] = useState<string | null>(initialSelectedMomentId)
   const [editingMoment, setEditingMoment] = useState<MomentRow | null>(null)
-  const itemRefs = useRef(new Map<string, HTMLElement | null>())
-  const syncPausedUntil = useRef(0)
-  const chartWrapperRef = useRef<HTMLDivElement | null>(null)
+  const [chartHeight, setChartHeight] = useState(0)
+  const [tailSpace, setTailSpace] = useState(0)
 
-  // The sticky chart permanently covers the top slice of the viewport once
-  // it's pinned (§ sticky chart request below) — read its live height rather
-  // than a hardcoded number so the anchor/visibility math below still tracks
-  // reality if the chart's own size ever changes.
-  const getOcclusion = useCallback(() => chartWrapperRef.current?.getBoundingClientRect().height ?? 0, [])
+  const chartRef = useRef<HTMLDivElement | null>(null)
+  const snapSentinelRef = useRef<HTMLSpanElement | null>(null)
+  const itemRefs = useRef(new Map<string, HTMLElement>())
+  const ignoreObserverUntil = useRef(0)
+  const deepLinkHandled = useRef(false)
 
-  // Same anchor concept as before (§40's comment), just rebased onto the
-  // viewport slice that's actually free of the sticky chart.
-  const getAnchorY = useCallback(() => {
-    const occlusion = getOcclusion()
-    return occlusion + (window.innerHeight - occlusion) * ANCHOR_RATIO
-  }, [getOcclusion])
-
-  // Only moments that actually ended up on the line can take part in the
-  // coupling: sources are never plotted (§38), and a moment can lose its dot
-  // if another one snapped to the same trading day.
-  const plottedIds = useMemo(() => {
-    const ids = new Set<string>()
-    for (const point of chartData ?? []) {
-      if (point.momentId) ids.add(point.momentId)
-    }
-    return ids
-  }, [chartData])
+  const hasChart = Boolean(chartData && chartData.length >= 2)
+  const orderedIds = useMemo(() => moments.map((moment) => moment.id), [moments])
 
   const registerItem = useCallback((id: string, element: HTMLElement | null) => {
     if (element) itemRefs.current.set(id, element)
     else itemRefs.current.delete(id)
   }, [])
 
-  const hasChart = Boolean(chartData && chartData.length >= 2)
+  // Note: whether a moment has a dot on the line is purely the chart's
+  // business — sources are never plotted (§38), and a moment loses its dot if
+  // a later one snapped to the same trading day. It deliberately no longer
+  // decides anything about the timeline: every card is selectable, which is
+  // what used to leave the middle of the list inert.
 
-  // Feeds `scroll-pt-[var(--moment-scroll-anchor)]` on <html> (layout.tsx),
-  // which pairs CSS scroll-snap with the exact same anchor line the JS sync
-  // above/below uses — so a native snap (from a swipe) and a JS-driven
-  // scrollBy (from a chart tap) always agree on where a card should rest,
-  // instead of the browser correcting to a different spot after ours lands.
+  // Measure the sticky chart rather than hardcoding its height — the range
+  // selector can wrap, fonts load late, and the viewport rotates.
   useEffect(() => {
-    const updateAnchorVar = () => {
-      document.documentElement.style.setProperty('--moment-scroll-anchor', `${getAnchorY()}px`)
+    const element = chartRef.current
+    if (!element) {
+      setChartHeight(0)
+      return
     }
-    updateAnchorVar()
 
-    window.addEventListener('resize', updateAnchorVar)
-    const observer = new ResizeObserver(updateAnchorVar)
-    if (chartWrapperRef.current) observer.observe(chartWrapperRef.current)
+    const measure = () => setChartHeight(Math.round(element.getBoundingClientRect().height))
+    measure()
+
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [hasChart])
+
+  // The single source of truth for "directly under the chart". The browser
+  // applies scroll-padding-top to both things that move the page here: native
+  // scroll-snap and scrollIntoView. That's why the cards themselves carry no
+  // scroll-margin-top — it would be added on top of this and park every card
+  // a full chart-height too low.
+  useEffect(() => {
+    const root = document.documentElement
+    root.style.scrollPaddingTop = `${chartHeight}px`
+    return () => {
+      root.style.scrollPaddingTop = ''
+    }
+  }, [chartHeight])
+
+  // Scroll-snap is switched on only once the first card has reached its
+  // resting place under the chart, and off again above it. Left on for the
+  // whole page it would reach roughly a quarter of a viewport past the first
+  // card and drag the reader off the thesis mid-sentence — measurably, not
+  // theoretically: at 390×844 a scroll to 180px was pulled to 387px.
+  //
+  // The sentinel sits at exactly the first card's snap position, so the
+  // switch always flips at the moment the page is already standing on a snap
+  // point and nothing visibly moves. Detecting that with the same observer
+  // the selection uses keeps every "where am I" question in one mechanism.
+  useEffect(() => {
+    const sentinel = snapSentinelRef.current
+    const root = document.documentElement
+    if (!sentinel) {
+      root.style.scrollSnapType = ''
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.rootBounds) return
+        // Not intersecting can mean either "still below the fold" or "already
+        // scrolled past the top of the list"; only the latter enables snap.
+        const pastFirstCard =
+          !entry.isIntersecting && entry.boundingClientRect.top <= entry.rootBounds.top
+        // Proximity, never mandatory: mandatory would make the page refuse to
+        // rest anywhere but on a card, including on the way out of the list.
+        root.style.scrollSnapType = pastFirstCard ? 'y proximity' : 'none'
+      },
+      { rootMargin: `-${chartHeight}px 0px 0px 0px`, threshold: 0 }
+    )
+    observer.observe(sentinel)
 
     return () => {
-      window.removeEventListener('resize', updateAnchorVar)
       observer.disconnect()
-      document.documentElement.style.removeProperty('--moment-scroll-anchor')
+      root.style.scrollSnapType = ''
     }
-  }, [getAnchorY, hasChart])
+  }, [chartHeight, moments.length])
 
-  // Chart → timeline (§39). Bring the entry into view only when it isn't
-  // already fully readable, and land it exactly on the anchor line so that
-  // the reverse sync agrees with us once the page settles.
-  const selectFromChart = useCallback(
-    (id: string) => {
-      setSelectedMomentId(id)
-      // Pause the reverse (timeline→chart) sync for every tap, not just the
-      // ones that trigger a scroll — otherwise a tap on an already-visible
-      // item leaves the listener armed, and the smallest incidental scroll
-      // right after the tap (mobile momentum, focus-scroll from the dot's
-      // tabIndex) can immediately overwrite the selection with whatever
-      // happens to sit closest to the anchor line instead.
-      syncPausedUntil.current = Date.now() + SCROLL_SYNC_PAUSE_MS
-
-      const element = itemRefs.current.get(id)
-      if (!element) return
-
-      const occlusion = getOcclusion()
-      const rect = element.getBoundingClientRect()
-      if (rect.top >= occlusion && rect.bottom <= window.innerHeight) return
-
-      window.scrollBy({
-        top: rect.top - getAnchorY(),
-        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-      })
-    },
-    [getAnchorY, getOcclusion]
-  )
-
-  const selectFromTimeline = useCallback((id: string) => {
-    syncPausedUntil.current = Date.now() + 200
-    setSelectedMomentId(id)
-  }, [])
-
-  // Deep link from a Memory card (§ homepage throwback → exact moment):
-  // selection state is already set from `initialSelectedMomentId`, so this
-  // only needs to bring that entry into view once, on arrival.
+  // Without this, the last card can never reach the slot under the chart —
+  // the page simply runs out of scroll first — and "click any card" would
+  // quietly stop working at the bottom of the list.
   useEffect(() => {
-    if (!initialSelectedMomentId) return
+    // No cards means no spacer is rendered at all, so there is nothing to
+    // reset here.
+    const lastId = orderedIds[orderedIds.length - 1]
+    if (!lastId) return
 
-    const element = itemRefs.current.get(initialSelectedMomentId)
-    if (!element) return
+    const measure = () => {
+      const element = itemRefs.current.get(lastId)
+      const lastHeight = element?.getBoundingClientRect().height ?? 0
+      setTailSpace(
+        Math.max(0, Math.round(window.innerHeight - chartHeight - lastHeight - PAGE_BOTTOM_PADDING))
+      )
+    }
+    measure()
 
-    syncPausedUntil.current = Date.now() + SCROLL_SYNC_PAUSE_MS
-    const rect = element.getBoundingClientRect()
-    window.scrollBy({
-      top: rect.top - getAnchorY(),
-      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-    })
-    // Runs once, right after the initial refs are registered — not on every
-    // change of the callbacks below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    window.addEventListener('resize', measure)
+    const observer = new ResizeObserver(measure)
+    const element = itemRefs.current.get(lastId)
+    if (element) observer.observe(element)
 
-  // Timeline → chart (§40). Deliberately only on real scrolling, never on
-  // mount: arriving on the page should show a calm chart, not one that has
-  // already picked a moment for you.
+    return () => {
+      window.removeEventListener('resize', measure)
+      observer.disconnect()
+    }
+  }, [orderedIds, chartHeight])
+
+  // Timeline → chart (§40). The selected moment is the topmost card that is
+  // still visible below the chart, whichever card that happens to be. The
+  // observer's negative top margin pulls the root's top edge down to the
+  // chart's bottom edge, so a card stops "intersecting" at the exact instant
+  // it disappears behind the chart — no scroll maths, no per-frame
+  // getBoundingClientRect, and the browser decides when the line is crossed.
   useEffect(() => {
-    if (plottedIds.size === 0) return
+    if (orderedIds.length === 0) return
 
-    let frame = 0
-    const handleScroll = () => {
-      if (frame) return
-      frame = requestAnimationFrame(() => {
-        frame = 0
-        if (Date.now() < syncPausedUntil.current) return
+    const visible = new Set<string>()
+    // The observer's first callback only reports the state the page already
+    // loaded in; nothing has been scrolled yet, so it must not light up a
+    // card. Arriving on the page should feel calm (§42), not pre-judged.
+    let primed = false
 
-        const occlusion = getOcclusion()
-        const anchor = getAnchorY()
-        let closestId: string | null = null
-        let closestDistance = Infinity
-
-        for (const [id, element] of itemRefs.current) {
-          if (!element || !plottedIds.has(id)) continue
-          const rect = element.getBoundingClientRect()
-          // Skip entries still hidden under the sticky chart, not just
-          // entries below the viewport — otherwise a card sitting right
-          // behind the chart could "win" the anchor even though the user
-          // can't actually see it.
-          if (rect.bottom < occlusion || rect.top > window.innerHeight) continue
-          const distance = Math.abs(rect.top - anchor)
-          if (distance < closestDistance) {
-            closestDistance = distance
-            closestId = id
-          }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const id = (entry.target as HTMLElement).dataset.momentId
+          if (!id) continue
+          if (entry.isIntersecting) visible.add(id)
+          else visible.delete(id)
         }
 
-        if (closestId) setSelectedMomentId(closestId)
-      })
+        if (!primed) {
+          primed = true
+          return
+        }
+        if (Date.now() < ignoreObserverUntil.current) return
+
+        const topmost = orderedIds.find((id) => visible.has(id))
+        // No card in view at all (scrolled past the section): keep the last
+        // selection rather than clearing it, so scrolling back doesn't blink.
+        if (topmost) setSelectedMomentId(topmost)
+      },
+      { rootMargin: `-${chartHeight}px 0px 0px 0px`, threshold: 0 }
+    )
+
+    for (const id of orderedIds) {
+      const element = itemRefs.current.get(id)
+      if (element) observer.observe(element)
     }
 
-    window.addEventListener('scroll', handleScroll, { passive: true })
-    return () => {
-      window.removeEventListener('scroll', handleScroll)
-      if (frame) cancelAnimationFrame(frame)
+    return () => observer.disconnect()
+  }, [orderedIds, chartHeight])
+
+  // The one way a moment becomes selected on purpose — from a tap on the
+  // card itself (§39: the whole card, not a small glyph on it) or on its dot
+  // in the chart. Both park the card directly under the chart, using the
+  // card's own scroll-margin-top rather than any hand-rolled offset maths.
+  const focusMoment = useCallback((id: string) => {
+    setSelectedMomentId(id)
+    ignoreObserverUntil.current = Date.now() + PROGRAMMATIC_SCROLL_SETTLE_MS
+
+    itemRefs.current.get(id)?.scrollIntoView({
+      block: 'start',
+      inline: 'nearest',
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+    })
+  }, [])
+
+  // Deep link from a Memory card (§ homepage throwback → exact moment). Wait
+  // for the chart measurement, otherwise the card scrolls to an offset of 0
+  // and lands underneath the chart it was supposed to sit below — and let the
+  // browser paint that measurement before scrolling to it.
+  useEffect(() => {
+    if (deepLinkHandled.current) return
+    if (!initialSelectedMomentId) {
+      deepLinkHandled.current = true
+      return
     }
-  }, [plottedIds, getAnchorY, getOcclusion])
+    if (hasChart && chartHeight === 0) return
+
+    deepLinkHandled.current = true
+    const frame = requestAnimationFrame(() => focusMoment(initialSelectedMomentId))
+    return () => cancelAnimationFrame(frame)
+  }, [initialSelectedMomentId, hasChart, chartHeight, focusMoment])
 
   return (
     <section className="flex flex-col gap-6">
@@ -203,20 +252,25 @@ export function MomentsSection({
         <p className="mb-3 mt-0.5 text-sm text-slate-500">Jouw momenten staan op de koerslijn.</p>
       </div>
 
-      {/* Sticky within `section`'s bounds, not just this block, so it stays
-          pinned while "Mijn momenten" scrolls underneath it (§18: the two are
-          one continuous section) and only scrolls away once the whole thing,
-          timeline included, has passed. The title/subtitle above stay in
-          normal flow on purpose — only the chart (+ its own range selector)
-          pins. */}
+      {/* Sticky within `section`'s bounds, so it stays pinned while "Mijn
+          momenten" scrolls underneath it (§18: the two are one continuous
+          section) and only scrolls away once the whole thing has passed.
+          `-mx-4 px-4` bleeds the white backdrop out to the page's own edges:
+          a card passing behind it has to be covered across the full width,
+          including the timeline rail, or its corners show alongside the
+          chart. */}
       {chartData && chartData.length >= 2 ? (
-        <div ref={chartWrapperRef} className="sticky top-0 z-20 border-b border-slate-100 bg-white pb-3">
+        <div
+          ref={chartRef}
+          data-chart-sticky=""
+          className="sticky top-0 z-30 -mx-4 border-b border-slate-100 bg-white px-4 pb-3"
+        >
           <PriceChart
             data={chartData}
             currency={currency}
             defaultRange={defaultRange}
             selectedMomentId={selectedMomentId}
-            onSelectMoment={selectFromChart}
+            onSelectMoment={focusMoment}
           />
         </div>
       ) : (
@@ -228,21 +282,32 @@ export function MomentsSection({
       <div>
         <h2 className="text-base font-semibold text-slate-900">Mijn momenten</h2>
         {moments.length > 0 ? (
-          <div className="mt-3 flex flex-col gap-3">
-            {moments.map((moment, index) => (
-              <MomentTimelineItem
-                key={moment.id}
-                moment={moment}
-                ref={(element) => registerItem(moment.id, element)}
-                selected={moment.id === selectedMomentId}
-                onSelect={
-                  plottedIds.has(moment.id) ? () => selectFromTimeline(moment.id) : undefined
-                }
-                onEdit={moment.type !== 'conviction_change' ? () => setEditingMoment(moment) : undefined}
-                isLast={index === moments.length - 1}
+          <>
+            <div className="relative mt-3 flex flex-col gap-3">
+              {/* Marks the top of the list — i.e. the first card's snap
+                  position — for the snap-toggle observer above. Absolute and
+                  1px tall so it costs the layout nothing. */}
+              <span
+                ref={snapSentinelRef}
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 top-0 h-px"
               />
-            ))}
-          </div>
+              {moments.map((moment, index) => (
+                <MomentTimelineItem
+                  key={moment.id}
+                  moment={moment}
+                  ref={(element) => registerItem(moment.id, element)}
+                  selected={moment.id === selectedMomentId}
+                  onSelect={() => focusMoment(moment.id)}
+                  onEdit={
+                    moment.type !== 'conviction_change' ? () => setEditingMoment(moment) : undefined
+                  }
+                  isLast={index === moments.length - 1}
+                />
+              ))}
+            </div>
+            <div aria-hidden="true" style={{ height: tailSpace }} />
+          </>
         ) : (
           <div className="mt-3 rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-400">
             Nog geen moment vastgelegd voor dit bedrijf.

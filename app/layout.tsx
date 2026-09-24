@@ -27,17 +27,15 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
-  // snap-y/snap-proximity live on the root scroller (this is a plain window-
-  // scrolled app, no overflow wrapper) so "Mijn momenten" can opt individual
-  // cards into snapping with scroll-snap-align — harmless everywhere else,
-  // since only those cards ever set that property. --moment-scroll-anchor is
-  // kept in sync with MomentsSection's own anchor line (§40) so the native
-  // snap settles a card exactly where the chart/timeline sync already looks
-  // for it, instead of fighting it.
+  // The root scroller deliberately carries no scroll-snap of its own. This is
+  // a plain window-scrolled app, so any snapping set here would apply to every
+  // page and to the whole length of each one; "Mijn momenten" is the only
+  // place that wants it, and MomentsSection switches it on and off for
+  // exactly the stretch of the company page where it belongs.
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${sourceSerif.variable} h-full antialiased snap-y snap-proximity scroll-pt-[var(--moment-scroll-anchor,0px)]`}
+      className={`${geistSans.variable} ${geistMono.variable} ${sourceSerif.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         {children}

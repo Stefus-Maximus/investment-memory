@@ -1,6 +1,6 @@
 'use client'
 
-import type { Ref } from 'react'
+import type { KeyboardEvent, Ref } from 'react'
 
 import { CollapsibleText } from '@/components/CollapsibleText'
 import { MomentTypeBadge } from '@/components/MomentTypeBadge'
@@ -118,6 +118,7 @@ export function MomentTimelineItem({
             href={moment.source_url ?? '#'}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
             className={`break-words text-sm font-semibold transition-colors duration-200 hover:underline ${primaryTextClass}`}
           >
             {moment.source_title}
@@ -152,7 +153,7 @@ export function MomentTimelineItem({
   )
 
   return (
-    <div className="flex gap-3">
+    <div data-moment-row={moment.id} className="flex gap-3">
       <div className="relative w-5 shrink-0">
         <RailDot selected={selected} />
         {!isLast ? (
@@ -165,20 +166,43 @@ export function MomentTimelineItem({
 
       <article
         ref={ref}
-        // snap-start on the exact element MomentsSection measures with
-        // getBoundingClientRect() (§40) — so the browser's own snap point and
-        // the JS anchor line describe the same position, not two competing
-        // ones.
-        className={`relative min-w-0 flex-1 snap-start rounded-xl border p-3 shadow-sm transition-[background-color,border-color,transform] duration-150 ease-out ${
-          selected
-            ? 'translate-x-1 border-blue-600 bg-blue-600'
-            : 'translate-x-0 border-slate-100 bg-white'
-        }`}
+        // The id the IntersectionObserver reads back off its entries, and
+        // snap-start on the very same element scrollIntoView targets — so a
+        // native snap and a tap-driven scroll describe one position instead
+        // of two competing ones (§39/§40). The offset from the top of the
+        // screen comes from the page's scroll-padding-top (set by
+        // MomentsSection), which both snapping and scrollIntoView honour;
+        // adding a scroll-margin-top here as well would count it twice and
+        // park every card a chart-height too low.
+        data-moment-id={moment.id}
+        // Deliberately no transform here: a selected card that shifts
+        // sideways pokes out from under the sticky chart when it scrolls
+        // behind it. Selection is a color change only.
+        {...(onSelect
+          ? {
+              role: 'button',
+              tabIndex: 0,
+              'aria-pressed': selected,
+              onClick: onSelect,
+              onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onSelect()
+                }
+              },
+            }
+          : {})}
+        className={`relative min-w-0 flex-1 snap-start rounded-xl border p-3 text-left shadow-sm transition-[background-color,border-color] duration-150 ease-out ${
+          onSelect ? 'cursor-pointer' : ''
+        } ${selected ? 'border-blue-600 bg-blue-600' : 'border-slate-100 bg-white'}`}
       >
         {onEdit ? (
           <button
             type="button"
-            onClick={onEdit}
+            onClick={(e) => {
+              e.stopPropagation()
+              onEdit()
+            }}
             aria-label="Moment bewerken"
             className={`absolute right-2.5 top-2.5 z-10 ${
               selected ? 'text-white/50 hover:text-white' : 'text-slate-300 hover:text-slate-500'
@@ -188,25 +212,7 @@ export function MomentTimelineItem({
           </button>
         ) : null}
 
-        {onSelect ? (
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={onSelect}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                onSelect()
-              }
-            }}
-            aria-pressed={selected}
-            className={`w-full cursor-pointer text-left ${onEdit ? 'pr-5' : ''}`}
-          >
-            {body}
-          </div>
-        ) : (
-          <div className={onEdit ? 'pr-5' : undefined}>{body}</div>
-        )}
+        <div className={onEdit ? 'pr-5' : undefined}>{body}</div>
       </article>
     </div>
   )
