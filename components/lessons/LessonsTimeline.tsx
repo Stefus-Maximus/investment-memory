@@ -1,61 +1,49 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { Lesson } from '@/lib/data/lessons'
 
 import { LessonDetailSheet } from './LessonDetailSheet'
 import { LessonTimelineItem } from './LessonTimelineItem'
 
-// The entry nearest this line, from the top of the viewport, counts as "in
-// focus" — a plain reading-orientation aid local to this one list, with no
-// coupling to any other component (unlike the company page's chart/timeline
-// sync in MomentsSection).
-const ANCHOR_RATIO = 0.22
-
-export function LessonsTimeline({ lessons }: { lessons: Lesson[] }) {
-  const [focusedId, setFocusedId] = useState<string | null>(lessons[0]?.id ?? null)
+export function LessonsTimeline({
+  lessons,
+  initialSelectedLessonId = null,
+}: {
+  lessons: Lesson[]
+  initialSelectedLessonId?: string | null
+}) {
+  const [selectedId, setSelectedId] = useState<string | null>(lessons[0]?.id ?? null)
   const [openLesson, setOpenLesson] = useState<Lesson | null>(null)
-  const itemRefs = useRef(new Map<string, HTMLElement | null>())
+  const deepLinkHandled = useRef(false)
 
-  const registerItem = useCallback((id: string, element: HTMLElement | null) => {
-    if (element) itemRefs.current.set(id, element)
-    else itemRefs.current.delete(id)
-  }, [])
+  function handleSelect(lesson: Lesson) {
+    setSelectedId(lesson.id)
+    setOpenLesson(lesson)
+  }
 
+  // Deep link from a search result (§ zoekfunctie) — same "land on it, opened"
+  // treatment as a moment deep-linked from a Memory card on the homepage.
+  // Deferred to a rAF callback (rather than called directly in the effect
+  // body) to keep this an external-system sync, not a same-tick setState.
+  //
+  // Deliberately no cleanup cancelling the frame: `deepLinkHandled` already
+  // guarantees this fires at most once, and in dev, Strict Mode's synchronous
+  // mount→cleanup→mount would otherwise cancel the very first frame before it
+  // ever paints, silently dropping the deep link.
   useEffect(() => {
-    if (lessons.length === 0) return
-
-    let frame = 0
-    const handleScroll = () => {
-      if (frame) return
-      frame = requestAnimationFrame(() => {
-        frame = 0
-        const anchor = window.innerHeight * ANCHOR_RATIO
-        let closestId: string | null = null
-        let closestDistance = Infinity
-
-        for (const [id, element] of itemRefs.current) {
-          if (!element) continue
-          const rect = element.getBoundingClientRect()
-          if (rect.bottom < 0 || rect.top > window.innerHeight) continue
-          const distance = Math.abs(rect.top - anchor)
-          if (distance < closestDistance) {
-            closestDistance = distance
-            closestId = id
-          }
-        }
-
-        if (closestId) setFocusedId(closestId)
-      })
+    if (deepLinkHandled.current) return
+    if (!initialSelectedLessonId) {
+      deepLinkHandled.current = true
+      return
     }
+    const lesson = lessons.find((l) => l.id === initialSelectedLessonId)
+    if (!lesson) return
 
-    window.addEventListener('scroll', handleScroll, { passive: true })
-    return () => {
-      window.removeEventListener('scroll', handleScroll)
-      if (frame) cancelAnimationFrame(frame)
-    }
-  }, [lessons.length])
+    deepLinkHandled.current = true
+    requestAnimationFrame(() => handleSelect(lesson))
+  }, [initialSelectedLessonId, lessons])
 
   if (lessons.length === 0) {
     return (
@@ -72,10 +60,9 @@ export function LessonsTimeline({ lessons }: { lessons: Lesson[] }) {
           <LessonTimelineItem
             key={lesson.id}
             lesson={lesson}
-            ref={(element) => registerItem(lesson.id, element)}
-            focused={lesson.id === focusedId}
+            focused={lesson.id === selectedId}
             isLast={index === lessons.length - 1}
-            onOpen={() => setOpenLesson(lesson)}
+            onSelect={() => handleSelect(lesson)}
           />
         ))}
       </div>

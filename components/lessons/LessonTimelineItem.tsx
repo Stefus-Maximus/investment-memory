@@ -1,6 +1,6 @@
 'use client'
 
-import type { Ref } from 'react'
+import type { KeyboardEvent } from 'react'
 
 import type { Lesson } from '@/lib/data/lessons'
 import { formatTimelineDate } from '@/lib/format'
@@ -57,16 +57,14 @@ function RailDot({ focused }: { focused: boolean }) {
 
 export function LessonTimelineItem({
   lesson,
-  ref,
   focused = false,
   isLast = false,
-  onOpen,
+  onSelect,
 }: {
   lesson: Lesson
-  ref?: Ref<HTMLElement>
   focused?: boolean
   isLast?: boolean
-  onOpen: () => void
+  onSelect: () => void
 }) {
   const { heading, body } = splitLessonContent(lesson.content)
 
@@ -93,8 +91,17 @@ export function LessonTimelineItem({
       </div>
 
       <article
-        ref={ref}
-        className={`relative min-w-0 flex-1 rounded-xl p-3 transition-[background-color,opacity] duration-[180ms] ease-out ${
+        role="button"
+        tabIndex={0}
+        aria-pressed={focused}
+        onClick={onSelect}
+        onKeyDown={(e: KeyboardEvent<HTMLElement>) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onSelect()
+          }
+        }}
+        className={`relative min-w-0 flex-1 cursor-pointer rounded-xl p-3 text-left transition-[background-color,opacity] duration-[180ms] ease-out ${
           focused ? 'bg-green-700 opacity-100' : 'bg-transparent opacity-55'
         }`}
       >
@@ -102,7 +109,7 @@ export function LessonTimelineItem({
           {formatTimelineDate(lesson.createdAt)}
         </p>
 
-        <p className={`mt-1.5 pr-6 font-serif text-[16px] font-bold leading-relaxed ${headingTextClass}`}>
+        <p className={`mt-1.5 pr-6 text-[16px] font-bold leading-relaxed ${headingTextClass}`}>
           {heading}
         </p>
         {body ? (
@@ -111,7 +118,10 @@ export function LessonTimelineItem({
 
         <button
           type="button"
-          onClick={onOpen}
+          onClick={(e) => {
+            e.stopPropagation()
+            onSelect()
+          }}
           aria-label="Volledige les bekijken"
           className={`absolute right-2.5 top-2.5 flex h-6 w-6 items-center justify-center rounded-full ${eyeButtonClass}`}
         >

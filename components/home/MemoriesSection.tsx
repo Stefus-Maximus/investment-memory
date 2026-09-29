@@ -1,6 +1,5 @@
 import Link from 'next/link'
 
-import { CompanyLogo } from '@/components/CompanyLogo'
 import type { MemoryCard } from '@/lib/data/memories'
 
 // Same neutral affordance language as elsewhere ("this navigates"), not a
@@ -46,9 +45,6 @@ export function MemoriesSection({ memories }: { memories: MemoryCard[] }) {
             className="relative flex w-[82%] shrink-0 snap-start flex-col gap-2 rounded-xl bg-blue-600 p-3 shadow-sm transition-colors hover:bg-blue-700"
           >
             <div className="flex items-center gap-2.5 pr-8">
-              <div className="shrink-0 rounded-full ring-2 ring-white/70">
-                <CompanyLogo logoUrl={memory.companyLogoUrl} ticker={memory.companyTicker} />
-              </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold text-white">{memory.companyName}</p>
                 <span className="mt-1 inline-flex items-center rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-white/50">

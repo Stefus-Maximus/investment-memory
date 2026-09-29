@@ -16,19 +16,33 @@ function toDateInputValue(occurredAt: string) {
 export function AddMomentSheet({
   companyId,
   editingMoment,
+  initialStep,
+  initialSourceUrl,
+  initialSourceTitle,
+  onSaved,
   onClose,
 }: {
   companyId?: string
   editingMoment?: MomentRow | null
+  // §"ÉÉN-KLIK TOEVOEGEN": the nieuws-page opens straight into the source
+  // step with URL/title already filled in, instead of the normal
+  // choice-first flow.
+  initialStep?: 'note' | 'source'
+  initialSourceUrl?: string
+  initialSourceTitle?: string
+  onSaved?: () => void
   onClose: () => void
 }) {
   const isEditing = !!editingMoment
+  const skipChoiceStep = isEditing || !!initialStep
   const [step, setStep] = useState<Step>(
-    editingMoment ? (editingMoment.type as 'note' | 'source') : 'choice'
+    editingMoment ? (editingMoment.type as 'note' | 'source') : (initialStep ?? 'choice')
   )
   const [content, setContent] = useState(editingMoment?.content ?? '')
-  const [sourceUrl, setSourceUrl] = useState(editingMoment?.source_url ?? '')
-  const [sourceTitle, setSourceTitle] = useState(editingMoment?.source_title ?? '')
+  const [sourceUrl, setSourceUrl] = useState(editingMoment?.source_url ?? initialSourceUrl ?? '')
+  const [sourceTitle, setSourceTitle] = useState(
+    editingMoment?.source_title ?? initialSourceTitle ?? ''
+  )
   const [sourceReflection, setSourceReflection] = useState(
     editingMoment?.type === 'source' ? (editingMoment.content ?? '') : ''
   )
@@ -54,6 +68,7 @@ export function AddMomentSheet({
         return
       }
       showToast('Toegevoegd aan je tijdlijn.')
+      onSaved?.()
       onClose()
     })
   }
@@ -87,6 +102,7 @@ export function AddMomentSheet({
         return
       }
       showToast('Toegevoegd aan je tijdlijn.')
+      onSaved?.()
       onClose()
     })
   }
@@ -108,7 +124,11 @@ export function AddMomentSheet({
     ? editingMoment?.type === 'source'
       ? 'Bron bewerken'
       : 'Notitie bewerken'
-    : 'Nieuwe toevoeging'
+    : initialStep === 'source'
+      ? 'Bron toevoegen'
+      : initialStep === 'note'
+        ? 'Nieuwe notitie'
+        : 'Nieuwe toevoeging'
 
   return (
     <>
@@ -121,7 +141,7 @@ export function AddMomentSheet({
 
       <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85vh] flex-col rounded-t-2xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-          {step !== 'choice' && !isEditing ? (
+          {step !== 'choice' && !skipChoiceStep ? (
             <button
               type="button"
               onClick={() => {

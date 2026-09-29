@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
-import { CompanyLogo } from '@/components/CompanyLogo'
 import { AuthGate } from '@/components/auth/AuthGate'
 import { AddMomentFab } from '@/components/company/AddMomentFab'
 import { CompanyOptionsMenu } from '@/components/company/CompanyOptionsMenu'
@@ -29,7 +28,7 @@ export default async function CompanyPage({ params, searchParams }: PageProps<'/
 
   const { data: company } = await supabase
     .from('companies')
-    .select('id, name, ticker, exchange, logo_url, conviction, created_at')
+    .select('id, name, ticker, exchange, conviction, created_at')
     .eq('id', id)
     .eq('user_id', user.id)
     .maybeSingle()
@@ -85,8 +84,6 @@ export default async function CompanyPage({ params, searchParams }: PageProps<'/
               />
             </svg>
           </Link>
-
-          <CompanyLogo logoUrl={company.logo_url} ticker={company.ticker} size="lg" variant="accent" />
 
           <div className="min-w-0 pt-0.5">
             <p className="truncate text-lg font-semibold text-slate-900">{company.name}</p>

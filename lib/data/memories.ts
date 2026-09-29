@@ -8,7 +8,6 @@ export interface MemoryCard {
   companyId: string
   companyName: string
   companyTicker: string
-  companyLogoUrl: string | null
   type: MomentType
   /** e.g. "3 maanden geleden", or the "Recent toegevoegd" fallback label. */
   windowLabel: string
@@ -47,7 +46,6 @@ type MomentRow = Pick<
 interface CompanyInfo {
   name: string
   ticker: string
-  logoUrl: string | null
 }
 
 // §9.2: the throwback is about *when*, not what the price was — the preview
@@ -74,7 +72,6 @@ function toMemoryCard(moment: MomentRow, company: CompanyInfo, windowLabel: stri
     companyId: moment.company_id,
     companyName: company.name,
     companyTicker: company.ticker,
-    companyLogoUrl: company.logoUrl,
     type: moment.type,
     windowLabel,
     quote: momentQuote(moment),
@@ -98,14 +95,14 @@ export async function getMemories(
   const companyIds = Array.from(new Set(moments.map((moment) => moment.company_id)))
   const { data: companies, error: companiesError } = await supabase
     .from('companies')
-    .select('id, name, ticker, logo_url')
+    .select('id, name, ticker')
     .in('id', companyIds)
 
   if (companiesError) throw companiesError
   const companyById = new Map(
     (companies ?? []).map((company) => [
       company.id,
-      { name: company.name, ticker: company.ticker, logoUrl: company.logo_url } satisfies CompanyInfo,
+      { name: company.name, ticker: company.ticker } satisfies CompanyInfo,
     ])
   )
 

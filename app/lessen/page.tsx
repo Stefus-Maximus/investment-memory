@@ -10,7 +10,13 @@ import { getInvestmentRules } from '@/lib/data/investment-rules'
 import { getLessons } from '@/lib/data/lessons'
 import { createClient } from '@/lib/supabase/server'
 
-export default async function LessonsPage() {
+export default async function LessonsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
+  const { lesson: lessonParam } = await searchParams
+  const initialSelectedLessonId = typeof lessonParam === 'string' ? lessonParam : null
   const supabase = await createClient()
   const {
     data: { user },
@@ -59,7 +65,7 @@ export default async function LessonsPage() {
             : 'Nog geen lessen vastgelegd'}
         </p>
 
-        <LessonsTimeline lessons={lessons} />
+        <LessonsTimeline lessons={lessons} initialSelectedLessonId={initialSelectedLessonId} />
       </div>
 
       <ProfileBlock email={user.email ?? null} />

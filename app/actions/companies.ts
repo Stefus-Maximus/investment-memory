@@ -3,7 +3,6 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
-import { getCompanyLogoUrl } from '@/lib/logos/company-logo'
 import { searchCompanies, type CompanySearchResult } from '@/lib/market-data/yahoo-finance'
 import { createClient } from '@/lib/supabase/server'
 import type { CompanyStatus } from '@/lib/supabase/database.types'
@@ -98,14 +97,9 @@ export async function createCompany(input: CreateCompanyInput): Promise<CreateCo
     return { success: true }
   }
 
-  // Best-effort only (see lib/logos/company-logo.ts) — never blocks or fails
-  // creation below; a lookup that fails or finds nothing just leaves
-  // logo_url null, and CompanyLogo falls back to initials.
-  const logoUrl = await getCompanyLogoUrl(name)
-
   const { data: company, error: companyError } = await supabase
     .from('companies')
-    .insert({ user_id: user.id, name, ticker, exchange, status: input.status, logo_url: logoUrl })
+    .insert({ user_id: user.id, name, ticker, exchange, status: input.status })
     .select('id')
     .single()
 

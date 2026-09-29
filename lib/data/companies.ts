@@ -10,7 +10,6 @@ export interface CompanyWithActivity {
   name: string
   ticker: string
   exchange: string
-  logoUrl: string | null
   latestMoment: {
     type: MomentType
     label: string | null
@@ -31,10 +30,10 @@ export async function getCompaniesWithActivity(
 ): Promise<CompanyWithActivity[]> {
   const { data: companies, error: companiesError } = await supabase
     .from('companies')
-    .select('id, name, ticker, exchange, logo_url')
+    .select('id, name, ticker, exchange')
     .eq('user_id', userId)
     .eq('status', status)
-    .order('created_at', { ascending: false })
+    .order('name', { ascending: true })
 
   if (companiesError) throw companiesError
   if (!companies || companies.length === 0) return []
@@ -65,7 +64,6 @@ export async function getCompaniesWithActivity(
       name: company.name,
       ticker: company.ticker,
       exchange: company.exchange,
-      logoUrl: company.logo_url,
       latestMoment: latest
         ? {
             type: latest.type,

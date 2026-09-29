@@ -1,48 +1,36 @@
 import Link from 'next/link'
 
-import { AvatarIcon } from '@/components/AvatarIcon'
+// Two letters at most: "Stef" -> "St", "Stef Beentjes" -> "SB".
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return ''
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[1][0]).toUpperCase()
+}
 
-export function Header({
-  name,
-  hasLessons,
-  avatarId,
-}: {
-  name: string | null
-  hasLessons: boolean
-  avatarId: string | null
-}) {
+export function Header({ name }: { name: string | null }) {
+  const firstName = name?.trim().split(/\s+/)[0]
+
   return (
     <header className="flex items-center justify-between">
       <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-        Welkom{name ? `, ${name}` : ''}
+        Welkom{firstName ? `, ${firstName}` : ''}
       </h1>
 
-      {/* §8: small, non-prominent avatar next to the lessons entry point —
-          not yet a link, since there is no profile page to open. */}
-      <div className="flex items-center gap-2">
-        <AvatarIcon avatarId={avatarId} size={32} />
-
-        {/* §7/§8: small, non-prominent entry point to /lessen — a dot, not a
-            count, so it never reads as an "unread"-style badge. */}
-        <Link
-          href="/lessen"
-          aria-label="Mijn lessen"
-          className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200"
-        >
-          <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path
-              d="M4 4.5c1.8-.8 4-.8 6 .5 2-1.3 4.2-1.3 6-.5v10c-1.8-.8-4-.8-6 .5-2-1.3-4.2-1.3-6-.5V4.5Z"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinejoin="round"
-            />
-            <path d="M10 5v10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-          </svg>
-          {hasLessons ? (
-            <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-blue-600" aria-hidden="true" />
-          ) : null}
-        </Link>
-      </div>
+      {/* §8: small, non-prominent avatar — the one icon in the header, doing
+          double duty as both the profile identity and the entry point to
+          /lessen (there's no separate profile page to open yet). A coloured
+          circle with the user's initials, same visual pattern as the
+          company-logo initials fallback but in the lessons journal's own
+          dark green accent (never the app's main blue), so it reads as
+          personal rather than as another interactive/conviction element. */}
+      <Link
+        href="/lessen"
+        aria-label="Profiel en mijn lessen"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-green-700 text-xs font-medium text-white shadow-sm transition-transform hover:scale-105 active:scale-95"
+      >
+        {name ? getInitials(name) : null}
+      </Link>
     </header>
   )
 }

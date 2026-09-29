@@ -136,7 +136,9 @@ export function MomentTimelineItem({
           <p className={`text-sm font-semibold transition-colors duration-200 ${primaryTextClass}`}>
             {convictionChangeTitle(moment.conviction_from, moment.conviction_to)}
           </p>
-          {moment.content ? <p className={`mt-1 text-sm ${noteTextClass}`}>{moment.content}</p> : null}
+          {moment.content ? (
+            <p className={`mt-1 text-sm ${noteTextClass}`}>{moment.content}</p>
+          ) : null}
           <PriceContext moment={moment} selected={selected} />
         </div>
       ) : (

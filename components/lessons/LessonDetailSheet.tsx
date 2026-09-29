@@ -32,7 +32,7 @@ export function LessonDetailSheet({ lesson, onClose }: { lesson: Lesson; onClose
         </div>
 
         <div className="overflow-y-auto px-4 py-4 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]">
-          <p className="font-serif text-[17px] leading-relaxed whitespace-pre-wrap text-slate-800">
+          <p className="text-[17px] leading-relaxed whitespace-pre-wrap text-slate-800">
             {lesson.content}
           </p>
         </div>
